@@ -1,0 +1,553 @@
+     1→/* iSecurify GRC — Seed Script
+     2→ * Creates Super Admin, sample tenant, users, frameworks, controls, and demo data
+     3→ */
+     4→import { db } from '../src/lib/db'
+     5→import { scryptSync, randomBytes, timingSafeEqual } from 'crypto'
+     6→
+     7→function hashPassword(password: string): string {
+     8→  const salt = randomBytes(16).toString('hex')
+     9→  const hash = scryptSync(password, salt, 64).toString('hex')
+    10→  return `${salt}:${hash}`
+    11→}
+    12→
+    13→export function verifyPassword(password: string, stored: string): boolean {
+    14→  const [salt, hash] = stored.split(':')
+    15→  if (!salt || !hash) return false
+    16→  const hashBuf = Buffer.from(hash, 'hex')
+    17→  const testBuf = scryptSync(password, salt, 64)
+    18→  if (hashBuf.length !== testBuf.length) return false
+    19→  return timingSafeEqual(hashBuf, testBuf)
+    20→}
+    21→
+    22→async function main() {
+    23→  console.log('🌱 Seeding iSecurify GRC database...')
+    24→
+    25→  // ---- Super Admin (tenant-less) ----
+    26→  const superAdmin = await db.user.upsert({
+    27→    where: { email: 'superadmin@isecurify.com' },
+    28→    update: {},
+    29→    create: {
+    30→      email: 'superadmin@isecurify.com',
+    31→      name: 'Super Admin',
+    32→      passwordHash: hashPassword('Admin@123'),
+    33→      role: 'super_admin',
+    34→      jobTitle: 'Platform Super Administrator',
+    35→      status: 'active',
+    36→    },
+    37→  })
+    38→  console.log('  ✓ Super Admin:', superAdmin.email)
+    39→
+    40→  // ---- Demo Tenant ----
+    41→  const tenant = await db.tenant.upsert({
+    42→    where: { slug: 'acme-corp' },
+    43→    update: {},
+    44→    create: {
+    45→      name: 'Acme Corporation',
+    46→      slug: 'acme-corp',
+    47→      industry: 'Financial Services',
+    48→      plan: 'enterprise',
+    49→      status: 'active',
+    50→      contactName: 'Sarah Mitchell',
+    51→      contactEmail: 'sarah.mitchell@acme.com',
+    52→      contactPhone: '+1-555-0100',
+    53→      address: '120 Market Street, San Francisco, CA 94105',
+    54→    },
+    55→  })
+    56→  console.log('  ✓ Tenant:', tenant.name)
+    57→
+    58→  // ---- Second demo tenant ----
+    59→  const tenant2 = await db.tenant.upsert({
+    60→    where: { slug: 'globex-health' },
+    61→    update: {},
+    62→    create: {
+    63→      name: 'Globex Health Systems',
+    64→      slug: 'globex-health',
+    65→      industry: 'Healthcare',
+    66→      plan: 'business',
+    67→      status: 'active',
+    68→      contactName: 'Dr. James Patel',
+    69→      contactEmail: 'j.patel@globexhealth.com',
+    70→      contactPhone: '+1-555-0200',
+    71→      address: '88 Wellness Blvd, Boston, MA 02115',
+    72→    },
+    73→  })
+    74→  console.log('  ✓ Tenant:', tenant2.name)
+    75→
+    76→  // ---- Tenant Users (multiple users per client company) ----
+    77→  const tenantAdmin = await db.user.upsert({
+    78→    where: { email: 'sarah.mitchell@acme.com' },
+    79→    update: {},
+    80→    create: {
+    81→      email: 'sarah.mitchell@acme.com',
+    82→      name: 'Sarah Mitchell',
+    83→      passwordHash: hashPassword('Tenant@123'),
+    84→      role: 'tenant_admin',
+    85→      jobTitle: 'CISO',
+    86→      department: 'Security',
+    87→      tenantId: tenant.id,
+    88→      status: 'active',
+    89→    },
+    90→  })
+    91→  const complianceOfficer = await db.user.upsert({
+    92→    where: { email: 'mark.lee@acme.com' },
+    93→    update: {},
+    94→    create: {
+    95→      email: 'mark.lee@acme.com',
+    96→      name: 'Mark Lee',
+    97→      passwordHash: hashPassword('Tenant@123'),
+    98→      role: 'compliance_officer',
+    99→      jobTitle: 'Compliance Manager',
+   100→      department: 'Compliance',
+   101→      tenantId: tenant.id,
+   102→      status: 'active',
+   103→    },
+   104→  })
+   105→  const auditor = await db.user.upsert({
+   106→    where: { email: 'priya.sharma@acme.com' },
+   107→    update: {},
+   108→    create: {
+   109→      email: 'priya.sharma@acme.com',
+   110→      name: 'Priya Sharma',
+   111→      passwordHash: hashPassword('Tenant@123'),
+   112→      role: 'auditor',
+   113→      jobTitle: 'Internal Auditor',
+   114→      department: 'Audit',
+   115→      tenantId: tenant.id,
+   116→      status: 'active',
+   117→    },
+   118→  })
+   119→  const employee = await db.user.upsert({
+   120→    where: { email: 'tom.reyes@acme.com' },
+   121→    update: {},
+   122→    create: {
+   123→      email: 'tom.reyes@acme.com',
+   124→      name: 'Tom Reyes',
+   125→      passwordHash: hashPassword('Tenant@123'),
+   126→      role: 'employee',
+   127→      jobTitle: 'IT Engineer',
+   128→      department: 'IT',
+   129→      tenantId: tenant.id,
+   130→      status: 'active',
+   131→    },
+   132→  })
+   133→  console.log('  ✓ Tenant users (4) created for Acme')
+   134→
+   135→  // ---- Frameworks ----
+   136→  const frameworks = [
+   137→    {
+   138→      code: 'ISO27001',
+   139→      name: 'ISO/IEC 27001:2022',
+   140→      description: 'International standard for information security management systems (ISMS).',
+   141→      category: 'security',
+   142→      version: '2022',
+   143→      icon: 'shield',
+   144→    },
+   145→    {
+   146→      code: 'SOC2',
+   147→      name: 'SOC 2 Type II',
+   148→      description: 'Service Organization Control 2 — Trust Services Criteria for security, availability, processing integrity, confidentiality, and privacy.',
+   149→      category: 'security',
+   150→      version: '2017',
+   151→      icon: 'lock',
+   152→    },
+   153→    {
+   154→      code: 'GDPR',
+   155→      name: 'GDPR',
+   156→      description: 'General Data Protection Regulation — EU privacy and data protection law.',
+   157→      category: 'privacy',
+   158→      version: '2018',
+   159→      icon: 'eye',
+   160→    },
+   161→    {
+   162→      code: 'HIPAA',
+   163→      name: 'HIPAA',
+   164→      description: 'Health Insurance Portability and Accountability Act — US healthcare data protection.',
+   165→      category: 'healthcare',
+   166→      version: '1996',
+   167→      icon: 'heart-pulse',
+   168→    },
+   169→    {
+   170→      code: 'PCI_DSS',
+   171→      name: 'PCI DSS v4.0',
+   172→      description: 'Payment Card Industry Data Security Standard for cardholder data protection.',
+   173→      category: 'financial',
+   174→      version: '4.0',
+   175→      icon: 'credit-card',
+   176→    },
+   177→    {
+   178→      code: 'NIST_CSF',
+   179→      name: 'NIST Cybersecurity Framework',
+   180→      description: 'Voluntary framework for improving cybersecurity risk management.',
+   181→      category: 'security',
+   182→      version: '2.0',
+   183→      icon: 'network',
+   184→    },
+   185→  ]
+   186→
+   187→  const frameworkRecords = []
+   188→  for (const fw of frameworks) {
+   189→    const rec = await db.framework.upsert({
+   190→      where: { code: fw.code },
+   191→      update: { description: fw.description },
+   192→      create: fw,
+   193→    })
+   194→    frameworkRecords.push(rec)
+   195→  }
+   196→  console.log('  ✓ Frameworks:', frameworkRecords.length)
+   197→
+   198→  // ---- Controls for ISO 27001 ----
+   199→  const iso = frameworkRecords.find((f) => f.code === 'ISO27001')!
+   200→  const isoControls = [
+   201→    { ref: 'A.5.1', title: 'Policies for information security', category: 'Organizational', description: 'Information security policy shall be defined and approved by management.', guidance: 'Document an information security policy, communicate to employees, and review at planned intervals.' },
+   202→    { ref: 'A.5.2', title: 'Information security roles and responsibilities', category: 'Organizational', description: 'Roles and responsibilities for information security shall be allocated.', guidance: 'Allocate security responsibilities to defined roles and document them.' },
+   203→    { ref: 'A.5.3', title: 'Segregation of duties', category: 'Organizational', description: 'Conflicting duties shall be segregated to reduce unauthorized modification.', guidance: 'Separate development, testing, and production duties.' },
+   204→    { ref: 'A.6.1', title: 'Screening', category: 'People', description: 'Background verification checks on all candidates for employment shall be carried out.', guidance: 'Conduct background checks prior to employment per legal requirements.' },
+   205→    { ref: 'A.6.3', title: 'Information security awareness, education, and training', category: 'People', description: 'Employees shall receive appropriate awareness education and training.', guidance: 'Deliver security awareness training at hire and annually thereafter.' },
+   206→    { ref: 'A.7.1', title: 'Physical security perimeters', category: 'Physical', description: 'Security perimeters shall be defined and used to protect areas with sensitive information.', guidance: 'Use multi-layer physical security (badge, CCTV, guards) for data centers.' },
+   207→    { ref: 'A.8.1', title: 'User endpoint devices', category: 'Technological', description: 'Information stored on user endpoint devices shall be protected.', guidance: 'Enforce full-disk encryption, screen lock, and remote wipe on endpoints.' },
+   208→    { ref: 'A.8.2', title: 'Privileged access rights', category: 'Technological', description: 'Privileged access rights shall be restricted and controlled.', guidance: 'Use PAM tools, MFA, and just-in-time elevation for admin accounts.' },
+   209→    { ref: 'A.8.3', title: 'Information access restriction', category: 'Technological', description: 'Access to information shall be restricted in line with access control policy.', guidance: 'Apply least-privilege and RBAC across all systems.' },
+   210→    { ref: 'A.8.4', title: 'Access to source code', category: 'Technological', description: 'Access to source code shall be restricted and managed.', guidance: 'Use version control with code-review gates and branch protection.' },
+   211→    { ref: 'A.8.5', title: 'Secure authentication', category: 'Technological', description: 'Secure authentication technologies and procedures shall be implemented.', guidance: 'MFA for all external access; passwordless where possible.' },
+   212→    { ref: 'A.8.7', title: 'Protection against malware', category: 'Technological', description: 'Protection against malware shall be implemented and maintained.', guidance: 'Deploy EDR with behavioral detection; quarantine on detection.' },
+   213→    { ref: 'A.8.8', title: 'Management of technical vulnerabilities', category: 'Technological', description: 'Information about technical vulnerabilities shall be collected and evaluated.', guidance: 'Run weekly vuln scans; SLA-based remediation (critical <= 7d).' },
+   214→    { ref: 'A.8.9', title: 'Configuration management', category: 'Technological', description: 'Configuration baselines shall be established, documented, and maintained.', guidance: 'Use CIS benchmarks; automated config drift detection.' },
+   215→    { ref: 'A.8.10', title: 'Information deletion', category: 'Technological', description: 'Information stored in information systems shall be deleted when no longer required.', guidance: 'Define data retention; cryptographically erase on disposal.' },
+   216→    { ref: 'A.8.11', title: 'Data masking', category: 'Technological', description: 'Data masking shall be used in line with access control policy.', guidance: 'Mask PII in non-production; use tokenization for card data.' },
+   217→    { ref: 'A.8.12', title: 'Data leakage prevention', category: 'Technological', description: 'Data leakage prevention measures shall be applied.', guidance: 'DLP at endpoint, network, and cloud egress.' },
+   218→    { ref: 'A.8.13', title: 'Information backup', category: 'Technological', description: 'Backup copies of information shall be maintained.', guidance: '3-2-1 backup rule; test restores quarterly.' },
+   219→    { ref: 'A.8.14', title: 'Redundancy of information processing facilities', category: 'Technological', description: 'Redundancy shall be implemented to meet availability requirements.', guidance: 'Multi-AZ deployments; documented RTO/RPO.' },
+   220→    { ref: 'A.8.15', title: 'Logging', category: 'Technological', description: 'Logs that record user activities, exceptions, faults, and events shall be produced.', guidance: 'Centralized SIEM with 1-year retention; immutable storage.' },
+   221→    { ref: 'A.8.16', title: 'Monitoring activities', category: 'Technological', description: 'Systems shall be monitored for anomalies.', guidance: '24x7 SOC monitoring; anomaly detection alerts.' },
+   222→    { ref: 'A.8.24', title: 'Use of cryptography', category: 'Technological', description: 'Cryptography shall be used to protect confidentiality, integrity, and authenticity.', guidance: 'Use TLS 1.3, AES-256 at rest; rotate keys annually.' },
+   223→    { ref: 'A.8.25', title: 'Secure development life cycle', category: 'Technological', description: 'Rules for secure development of systems shall be established.', guidance: 'Integrate SAST/DAST in CI; threat-model new features.' },
+   224→    { ref: 'A.8.28', title: 'Secure coding', category: 'Technological', description: 'Secure coding principles shall be applied.', guidance: 'Follow OWASP Top 10; peer-reviewed code.' },
+   225→  ]
+   226→
+   227→  for (const c of isoControls) {
+   228→    await db.control.upsert({
+   229→      where: { id: `iso-${c.ref}` },
+   230→      update: { description: c.description, guidance: c.guidance, category: c.category, frameworkId: iso.id, title: c.title, ref: c.ref },
+   231→      create: { id: `iso-${c.ref}`, ...c, frameworkId: iso.id },
+   232→    })
+   233→  }
+   234→  console.log('  ✓ ISO 27001 controls:', isoControls.length)
+   235→
+   236→  // ---- Controls for SOC 2 ----
+   237→  const soc2 = frameworkRecords.find((f) => f.code === 'SOC2')!
+   238→  const soc2Controls = [
+   239→    { ref: 'CC1.1', title: 'Control Environment — Integrity & Ethics', category: 'Common Criteria', description: 'Demonstrates commitment to integrity and ethical values.', guidance: 'Maintain a code of conduct; tone at the top.' },
+   240→    { ref: 'CC1.2', title: 'Board Independence', category: 'Common Criteria', description: 'Board of directors demonstrates independence from management.', guidance: 'Audit committee oversight of security.' },
+   241→    { ref: 'CC2.1', title: 'Internal Communication', category: 'Common Criteria', description: 'Information is communicated internally.', guidance: 'Security incidents reported within 24h.' },
+   242→    { ref: 'CC2.2', title: 'External Communication', category: 'Common Criteria', description: 'Information is communicated externally.', guidance: 'Customer breach notification within 72h.' },
+   243→    { ref: 'CC3.1', title: 'Risk Identification', category: 'Common Criteria', description: 'Identifies and assesses risks.', guidance: 'Annual enterprise risk assessment.' },
+   244→    { ref: 'CC3.2', title: 'Risk Assessment — Changes', category: 'Common Criteria', description: 'Assesses changes that could significantly impact the system.', guidance: 'Change management risk reviews.' },
+   245→    { ref: 'CC4.1', title: 'Monitoring — Ongoing', category: 'Common Criteria', description: 'Ongoing evaluations to ascertain controls are present and functioning.', guidance: 'Continuous control monitoring via CCP.' },
+   246→    { ref: 'CC4.2', title: 'Monitoring — Deficiencies', category: 'Common Criteria', description: 'Evaluates and communicates deficiencies.', guidance: 'Quarterly control deficiency review.' },
+   247→    { ref: 'CC5.1', title: 'Control Implementation', category: 'Common Criteria', description: 'Selects and develops controls to mitigate risks.', guidance: 'Risk-based control selection.' },
+   248→    { ref: 'CC5.2', title: 'Control Deployment', category: 'Common Criteria', description: 'Deploys controls as designed.', guidance: 'Documented control deployment evidence.' },
+   249→    { ref: 'CC6.1', title: 'Logical & Physical Access', category: 'Common Criteria', description: 'Implements logical access security software, infrastructure, and architectures.', guidance: 'IAM with SSO + MFA + RBAC.' },
+   250→    { ref: 'CC6.2', title: 'User Provisioning', category: 'Common Criteria', description: 'Prior to issuance, identifies and authenticates users.', guidance: 'Joiner-Mover-Leaver process.' },
+   251→    { ref: 'CC6.3', title: 'Authentication', category: 'Common Criteria', description: 'Authorizes, modifies, and revokes access.', guidance: 'MFA, least-privilege, periodic access review.' },
+   252→    { ref: 'CC7.1', title: 'Detection & Monitoring', category: 'Common Criteria', description: 'Detects security events.', guidance: 'SIEM + 24x7 monitoring.' },
+   253→    { ref: 'CC7.2', title: 'Incident Response', category: 'Common Criteria', description: 'Responds to identified incidents.', guidance: 'Documented IR plan; tabletop exercises.' },
+   254→    { ref: 'CC8.1', title: 'Change Management', category: 'Common Criteria', description: 'Manages changes to systems.', guidance: 'Change advisory board; peer-reviewed code.' },
+   255→    { ref: 'CC9.1', title: 'Risk Mitigation', category: 'Common Criteria', description: 'Mitigates risks identified in risk assessment.', guidance: 'Risk treatment plans with owners.' },
+   256→    { ref: 'A1.1', title: 'Availability — Capacity', category: 'Availability', description: 'Maintains environmental protections, software, and infrastructure.', guidance: 'Capacity planning; redundancy.' },
+   257→    { ref: 'A1.2', title: 'Availability — Recovery', category: 'Availability', description: 'Implements recovery procedures.', guidance: 'Tested DR runbooks; RTO/RPO.' },
+   258→    { ref: 'C1.1', title: 'Confidentiality — Protection', category: 'Confidentiality', description: 'Protects confidential information.', guidance: 'Encryption + access controls.' },
+   259→    { ref: 'P1.1', title: 'Privacy — Notice', category: 'Privacy', description: 'Provides notice of entity privacy practices.', guidance: 'Public privacy policy.' },
+   260→    { ref: 'P2.1', title: 'Privacy — Choice & Consent', category: 'Privacy', description: 'Provides choice and consent for PII use.', guidance: 'Consent management platform.' },
+   261→  ]
+   262→  for (const c of soc2Controls) {
+   263→    await db.control.upsert({
+   264→      where: { id: `soc2-${c.ref}` },
+   265→      update: { description: c.description, guidance: c.guidance, category: c.category, frameworkId: soc2.id, title: c.title, ref: c.ref },
+   266→      create: { id: `soc2-${c.ref}`, ...c, frameworkId: soc2.id },
+   267→    })
+   268→  }
+   269→  console.log('  ✓ SOC 2 controls:', soc2Controls.length)
+   270→
+   271→  // ---- Controls for GDPR ----
+   272→  const gdpr = frameworkRecords.find((f) => f.code === 'GDPR')!
+   273→  const gdprControls = [
+   274→    { ref: 'Art.5', title: 'Principles for processing personal data', category: 'Principles', description: 'Lawfulness, fairness, transparency; purpose limitation; data minimization.', guidance: 'Document lawful basis for each processing activity.' },
+   275→    { ref: 'Art.6', title: 'Lawfulness of processing', category: 'Lawful Basis', description: 'Identify a lawful basis for processing.', guidance: 'Consent, contract, legal obligation, vital interest, public task, legitimate interest.' },
+   276→    { ref: 'Art.7', title: 'Conditions for consent', category: 'Consent', description: 'Consent must be freely given, specific, informed, and unambiguous.', guidance: 'Granular consent; easy withdrawal.' },
+   277→    { ref: 'Art.9', title: 'Special categories of personal data', category: 'Sensitive Data', description: 'Processing of special categories prohibited unless exception applies.', guidance: 'Explicit consent for health, biometric, genetic data.' },
+   278→    { ref: 'Art.12', title: 'Transparency of information', category: 'Data Subject Rights', description: 'Provide information in concise, transparent, intelligible, and easily accessible form.', guidance: 'Plain-language privacy notices.' },
+   279→    { ref: 'Art.13', title: 'Information to be provided (collected from subject)', category: 'Data Subject Rights', description: 'Inform data subjects when collecting their data.', guidance: 'Collection notice at point of capture.' },
+   280→    { ref: 'Art.15', title: 'Right of access', category: 'Data Subject Rights', description: 'Data subject may obtain confirmation of processing and copy of data.', guidance: 'DSAR fulfillment within 1 month.' },
+   281→    { ref: 'Art.16', title: 'Right to rectification', category: 'Data Subject Rights', description: 'Data subject may correct inaccurate data.', guidance: 'Self-service profile editing.' },
+   282→    { ref: 'Art.17', title: 'Right to erasure (right to be forgotten)', category: 'Data Subject Rights', description: 'Data subject may request deletion.', guidance: 'End-to-end deletion including backups per retention schedule.' },
+   283→    { ref: 'Art.20', title: 'Right to data portability', category: 'Data Subject Rights', description: 'Receive data in structured, machine-readable format.', guidance: 'JSON/CSV export endpoint.' },
+   284→    { ref: 'Art.25', title: 'Data protection by design and by default', category: 'Accountability', description: 'Implement appropriate technical and organizational measures.', guidance: 'Privacy-by-design assessments; default privacy settings.' },
+   285→    { ref: 'Art.28', title: 'Processor obligations', category: 'Accountability', description: 'Use only processors providing sufficient guarantees.', guidance: 'DPAs with all subprocessors.' },
+   286→    { ref: 'Art.30', title: 'Records of processing activities', category: 'Accountability', description: 'Maintain ROPA for each processing activity.', guidance: 'Living ROPA document.' },
+   287→    { ref: 'Art.32', title: 'Security of processing', category: 'Security', description: 'Implement appropriate technical and organizational security measures.', guidance: 'Encryption, pseudonymization, regular testing.' },
+   288→    { ref: 'Art.33', title: 'Notification of breach to authority', category: 'Breach Notification', description: 'Notify supervisory authority within 72 hours of breach.', guidance: 'Breach playbook; legal counsel on standby.' },
+   289→    { ref: 'Art.34', title: 'Notification of breach to data subject', category: 'Breach Notification', description: 'Notify data subjects without undue delay if high risk.', guidance: 'Pre-drafted customer notification templates.' },
+   290→    { ref: 'Art.35', title: 'Data protection impact assessment', category: 'DPIA', description: 'Conduct DPIA for high-risk processing.', guidance: 'DPIA template; DPO sign-off.' },
+   291→    { ref: 'Art.37', title: 'Designation of DPO', category: 'Governance', description: 'Designate a Data Protection Officer where required.', guidance: 'DPO reports to highest management level.' },
+   292→    { ref: 'Art.44', title: 'Transfers to third countries', category: 'Transfers', description: 'Transfers only with adequate safeguards.', guidance: 'SCCs; transfer impact assessments.' },
+   293→  ]
+   294→  for (const c of gdprControls) {
+   295→    await db.control.upsert({
+   296→      where: { id: `gdpr-${c.ref}` },
+   297→      update: { description: c.description, guidance: c.guidance, category: c.category, frameworkId: gdpr.id, title: c.title, ref: c.ref },
+   298→      create: { id: `gdpr-${c.ref}`, ...c, frameworkId: gdpr.id },
+   299→    })
+   300→  }
+   301→  console.log('  ✓ GDPR controls:', gdprControls.length)
+   302→
+   303→  // ---- HIPAA controls ----
+   304→  const hipaa = frameworkRecords.find((f) => f.code === 'HIPAA')!
+   305→  const hipaaControls = [
+   306→    { ref: '164.308(a)(1)', title: 'Security Management Process', category: 'Administrative', description: 'Implement risk analysis and risk management.', guidance: 'Annual risk analysis; documented risk treatment.' },
+   307→    { ref: '164.308(a)(3)', title: 'Workforce Security', category: 'Administrative', description: 'Implement policies for workforce access.', guidance: 'Sanction policy; authorization levels.' },
+   308→    { ref: '164.308(a)(4)', title: 'Information Access Management', category: 'Administrative', description: 'Implement access authorization and modification.', guidance: 'Role-based access; periodic review.' },
+   309→    { ref: '164.308(a)(5)', title: 'Security Awareness & Training', category: 'Administrative', description: 'Implement security awareness and training program.', guidance: 'Annual training; phishing simulations.' },
+   310→    { ref: '164.308(a)(6)', title: 'Security Incident Procedures', category: 'Administrative', description: 'Implement procedures to respond to security incidents.', guidance: 'Documented IR plan; post-incident review.' },
+   311→    { ref: '164.308(a)(7)', title: 'Contingency Plan', category: 'Administrative', description: 'Establish and implement contingency plan.', guidance: 'DR plan; data backup; emergency mode ops.' },
+   312→    { ref: '164.310(a)(1)', title: 'Facility Access Controls', category: 'Physical', description: 'Implement policies for facility access.', guidance: 'Badge access; visitor logs; CCTV.' },
+   313→    { ref: '164.310(b)', title: 'Workstation Use', category: 'Physical', description: 'Implement workstation use policies.', guidance: 'Clean desk; screen lock policy.' },
+   314→    { ref: '164.310(c)', title: 'Workstation Security', category: 'Physical', description: 'Implement physical safeguards for workstations.', guidance: 'Secure workstations; cable locks.' },
+   315→    { ref: '164.310(d)', title: 'Device & Media Controls', category: 'Physical', description: 'Implement controls for devices and media.', guidance: 'Asset tracking; secure disposal.' },
+   316→    { ref: '164.312(a)(1)', title: 'Access Control', category: 'Technical', description: 'Implement technical access controls.', guidance: 'Unique user IDs; emergency access; auto logoff.' },
+   317→    { ref: '164.312(b)', title: 'Audit Controls', category: 'Technical', description: 'Implement audit controls.', guidance: 'Audit logging; periodic review.' },
+   318→    { ref: '164.312(c)(1)', title: 'Integrity', category: 'Technical', description: 'Implement controls to protect ePHI integrity.', guidance: 'Hashing; integrity monitoring.' },
+   319→    { ref: '164.312(e)(1)', title: 'Transmission Security', category: 'Technical', description: 'Implement technical security for ePHI transmission.', guidance: 'TLS; VPN; encrypted email.' },
+   320→  ]
+   321→  for (const c of hipaaControls) {
+   322→    await db.control.upsert({
+   323→      where: { id: `hipaa-${c.ref}` },
+   324→      update: { description: c.description, guidance: c.guidance, category: c.category, frameworkId: hipaa.id, title: c.title, ref: c.ref },
+   325→      create: { id: `hipaa-${c.ref}`, ...c, frameworkId: hipaa.id },
+   326→    })
+   327→  }
+   328→  console.log('  ✓ HIPAA controls:', hipaaControls.length)
+   329→
+   330→  // ---- PCI DSS controls ----
+   331→  const pci = frameworkRecords.find((f) => f.code === 'PCI_DSS')!
+   332→  const pciControls = [
+   333→    { ref: '1.1', title: 'Firewall Configuration Standard', category: 'Network Security', description: 'Establish and implement firewall and router configuration standards.', guidance: 'Documented standards; semi-annual review.' },
+   334→    { ref: '1.2', title: 'Network Architecture Diagrams', category: 'Network Security', description: 'Build firewall and router configurations that restrict connections.', guidance: 'Current network diagrams; DMZ segmentation.' },
+   335→    { ref: '2.1', title: 'Default Passwords', category: 'Configuration', description: 'Always change vendor-supplied defaults.', guidance: 'Remove defaults; unique per system.' },
+   336→    { ref: '2.2', title: 'Configuration Standards', category: 'Configuration', description: 'Develop configuration standards for all system components.', guidance: 'CIS benchmarks; hardening checklists.' },
+   337→    { ref: '3.1', title: 'Cardholder Data Retention', category: 'Data Protection', description: 'Limit retention of cardholder data.', guidance: 'Retention policy; secure deletion.' },
+   338→    { ref: '3.4', title: 'Render PAN Unreadable', category: 'Data Protection', description: 'Render PAN unreadable wherever stored.', guidance: 'Tokenization; truncation; strong crypto.' },
+   339→    { ref: '4.1', title: 'Encrypt Transmission', category: 'Data Protection', description: 'Use strong cryptography to encrypt cardholder data over open networks.', guidance: 'TLS 1.2+; no fallback to weak ciphers.' },
+   340→    { ref: '5.1', title: 'Anti-Malware', category: 'Vulnerability Mgmt', description: 'Deploy anti-malware on all systems commonly affected by malware.', guidance: 'EDR; signature + behavioral.' },
+   341→    { ref: '6.1', title: 'Vulnerability Scanning', category: 'Vulnerability Mgmt', description: 'Establish a process to identify security vulnerabilities.', guidance: 'Weekly internal; quarterly external scans.' },
+   342→    { ref: '6.2', title: 'Patch Management', category: 'Vulnerability Mgmt', description: 'Install critical security patches within one month.', guidance: 'Critical patches within 7 days.' },
+   343→    { ref: '7.1', title: 'Least Privilege Access', category: 'Access Control', description: 'Limit access to cardholder data to need-to-know.', guidance: 'RBAC; periodic access review.' },
+   344→    { ref: '8.1', title: 'User Identification', category: 'Access Control', description: 'Define and implement policies for user identification.', guidance: 'Unique IDs; shared accounts prohibited.' },
+   345→    { ref: '8.2', title: 'Authentication', category: 'Access Control', description: 'Authenticate all access to system components.', guidance: 'MFA for CDE; password complexity.' },
+   346→    { ref: '9.1', title: 'Physical Access', category: 'Physical', description: 'Use appropriate facility entry controls.', guidance: 'Badge access; visitor escorts.' },
+   347→    { ref: '10.1', title: 'Audit Trails', category: 'Monitoring', description: 'Implement audit trails for all system components.', guidance: 'Log all access to CHD; synchronize time.' },
+   348→    { ref: '11.1', title: 'Wireless Scanning', category: 'Testing', description: 'Test for unauthorized wireless access points.', guidance: 'Quarterly wireless scans.' },
+   349→    { ref: '11.2', title: 'Internal & External Scans', category: 'Testing', description: 'Run internal and external network vulnerability scans.', guidance: 'ASV scans quarterly.' },
+   350→    { ref: '11.3', title: 'Penetration Testing', category: 'Testing', description: 'Perform penetration testing at least annually.', guidance: 'Annual pentest; retest after changes.' },
+   351→  ]
+   352→  for (const c of pciControls) {
+   353→    await db.control.upsert({
+   354→      where: { id: `pci-${c.ref}` },
+   355→      update: { description: c.description, guidance: c.guidance, category: c.category, frameworkId: pci.id, title: c.title, ref: c.ref },
+   356→      create: { id: `pci-${c.ref}`, ...c, frameworkId: pci.id },
+   357→    })
+   358→  }
+   359→  console.log('  ✓ PCI DSS controls:', pciControls.length)
+   360→
+   361→  // ---- NIST CSF controls ----
+   362→  const nist = frameworkRecords.find((f) => f.code === 'NIST_CSF')!
+   363→  const nistControls = [
+   364→    { ref: 'GV.OC-01', title: 'Organizational Context', category: 'Govern', description: 'Cybersecurity risk management activities are informed by organizational mission.', guidance: 'Map cybersecurity to business objectives.' },
+   365→    { ref: 'GV.OC-03', title: 'Legal & Regulatory', category: 'Govern', description: 'Legal and regulatory requirements are understood.', guidance: 'Compliance register maintained.' },
+   366→    { ref: 'GV.RM-01', title: 'Risk Management Strategy', category: 'Govern', description: 'Risk management strategy is established.', guidance: 'Documented risk appetite and tolerance.' },
+   367→    { ref: 'ID.AM-01', title: 'Inventory of Physical Devices', category: 'Identify', description: 'Inventories of physical devices are maintained.', guidance: 'Asset management system; CMDB.' },
+   368→    { ref: 'ID.AM-02', title: 'Inventory of Software', category: 'Identify', description: 'Inventories of software platforms and applications are maintained.', guidance: 'Software asset management; SaaS inventory.' },
+   369→    { ref: 'ID.RA-01', title: 'Vulnerabilities Identified', category: 'Identify', description: 'Vulnerabilities are identified and documented.', guidance: 'Continuous vuln scanning; CVE tracking.' },
+   370→    { ref: 'ID.RA-04', title: 'Potential Impacts', category: 'Identify', description: 'Potential business impacts and likelihoods are identified.', guidance: 'Business impact analysis (BIA).' },
+   371→    { ref: 'PR.AA-01', title: 'Identity Verification', category: 'Protect', description: 'Identities are verified before access.', guidance: 'Strong authentication; MFA.' },
+   372→    { ref: 'PR.AA-05', title: 'Network Integrity', category: 'Protect', description: 'Network integrity is protected.', guidance: 'Segmentation; micro-segmentation.' },
+   373→    { ref: 'PR.DS-01', title: 'Data-at-rest Confidentiality', category: 'Protect', description: 'Confidentiality of data-at-rest is protected.', guidance: 'Encryption; access controls.' },
+   374→    { ref: 'PR.DS-02', title: 'Data-in-transit Confidentiality', category: 'Protect', description: 'Confidentiality of data-in-transit is protected.', guidance: 'TLS; VPN; mTLS.' },
+   375→    { ref: 'PR.IR-01', title: 'Configuration Baselines', category: 'Protect', description: 'Configuration baselines are established and maintained.', guidance: 'CIS benchmarks; IaC.' },
+   376→    { ref: 'DE.CM-01', title: 'Network Monitoring', category: 'Detect', description: 'Networks are monitored to detect anomalies.', guidance: 'IDS/IPS; NDR.' },
+   377→    { ref: 'DE.CM-03', title: 'Personnel Activity', category: 'Detect', description: 'Personnel activity is monitored.', guidance: 'UEBA; access logs.' },
+   378→    { ref: 'DE.AE-02', title: 'Event Analysis', category: 'Detect', description: 'Events are analyzed to understand targets and methods.', guidance: 'SIEM correlation rules.' },
+   379→    { ref: 'RS.MA-01', title: 'Incident Response Plan', category: 'Respond', description: 'IR plan is executed once an incident is declared.', guidance: 'Tested IR plan; clear roles.' },
+   380→    { ref: 'RS.AN-01', title: 'Incident Analysis', category: 'Respond', description: 'Incidents are analyzed.', guidance: 'Forensics; root-cause analysis.' },
+   381→    { ref: 'RC.RP-01', title: 'Recovery Plan', category: 'Recover', description: 'Recovery plan is executed during incident.', guidance: 'Tested recovery runbooks.' },
+   382→  ]
+   383→  for (const c of nistControls) {
+   384→    await db.control.upsert({
+   385→      where: { id: `nist-${c.ref}` },
+   386→      update: { description: c.description, guidance: c.guidance, category: c.category, frameworkId: nist.id, title: c.title, ref: c.ref },
+   387→      create: { id: `nist-${c.ref}`, ...c, frameworkId: nist.id },
+   388→    })
+   389→  }
+   390→  console.log('  ✓ NIST CSF controls:', nistControls.length)
+   391→
+   392→  // ---- Control Assignments for Acme (sample statuses) ----
+   393→  const allControls = await db.control.findMany({ select: { id: true, frameworkId: true } })
+   394→  const isoCtlIds = allControls.filter(c => c.frameworkId === iso.id).map(c => c.id)
+   395→  const soc2CtlIds = allControls.filter(c => c.frameworkId === soc2.id).map(c => c.id)
+   396→  const gdprCtlIds = allControls.filter(c => c.frameworkId === gdpr.id).map(c => c.id)
+   397→
+   398→  const statuses = ['compliant', 'implemented', 'in_progress', 'not_started', 'non_compliant']
+   399→  let idx = 0
+   400→  for (const ctlId of [...isoCtlIds, ...soc2CtlIds, ...gdprCtlIds]) {
+   401→    const status = statuses[idx % statuses.length]
+   402→    await db.controlAssignment.upsert({
+   403→      where: { tenantId_controlId: { tenantId: tenant.id, controlId: ctlId } },
+   404→      update: { status },
+   405→      create: { tenantId: tenant.id, controlId: ctlId, status, owner: ['Sarah Mitchell', 'Mark Lee', 'Priya Sharma', 'Tom Reyes'][idx % 4] },
+   406→    })
+   407→    idx++
+   408→  }
+   409→  console.log('  ✓ Control assignments for Acme:', idx)
+   410→
+   411→  // ---- Sample Evidence ----
+   412→  const sampleEvidence = [
+   413→    { title: 'Information Security Policy v3.2', description: 'Approved ISMS policy document signed by CISO.', type: 'file', fileName: 'IS-Policy-v3.2.pdf', mimeType: 'application/pdf', fileSize: 482103, controlId: 'iso-A.5.1', tags: 'policy,isms', status: 'approved' },
+   414→    { title: 'Q3 Security Awareness Training Records', description: 'Training completion report from LMS for Q3.', type: 'file', fileName: 'training-report-q3.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', fileSize: 156872, controlId: 'iso-A.6.3', tags: 'training,awareness', status: 'approved' },
+   415→    { title: 'Privileged Access Management Dashboard', description: 'Live PAM tool dashboard showing JIT elevation requests.', type: 'link', fileUrl: 'https://pam.acme.com/dashboard', linkTitle: 'PAM Console', controlId: 'iso-A.8.2', tags: 'access,pam', status: 'active' },
+   416→    { title: 'Vulnerability Scan Report — Week 38', description: 'Tenable weekly vulnerability scan export.', type: 'file', fileName: 'tenable-w38.pdf', mimeType: 'application/pdf', fileSize: 923481, controlId: 'iso-A.8.8', tags: 'vuln,scan', status: 'active' },
+   417→    { title: 'Backup Restore Test — Sept 2024', description: 'Quarterly restore test results.', type: 'file', fileName: 'restore-test-sept2024.pdf', mimeType: 'application/pdf', fileSize: 234120, controlId: 'iso-A.8.13', tags: 'backup,dr', status: 'approved' },
+   418→    { title: 'SIEM Alerting Runbook', description: 'Internal SOC runbook for SIEM alert triage.', type: 'link', fileUrl: 'https://wiki.acme.com/soc/siem-runbook', linkTitle: 'SOC Wiki — SIEM Runbook', controlId: 'iso-A.8.16', tags: 'siem,soc', status: 'active' },
+   419→    { title: 'Code Review Policy', description: 'Peer review policy enforced via GitHub branch protection.', type: 'file', fileName: 'code-review-policy.pdf', mimeType: 'application/pdf', fileSize: 89234, controlId: 'soc2-CC8.1', tags: 'development,review', status: 'approved' },
+   420→    { title: 'Privacy Policy (Public)', description: 'Customer-facing privacy policy.', type: 'link', fileUrl: 'https://acme.com/privacy', linkTitle: 'acme.com/privacy', controlId: 'gdpr-Art.13', tags: 'privacy,policy', status: 'active' },
+   421→    { title: 'ROPA Workbook', description: 'Records of Processing Activities maintained in shared workbook.', type: 'file', fileName: 'ropa-2024.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', fileSize: 412300, controlId: 'gdpr-Art.30', tags: 'ropa,gdpr', status: 'active' },
+   422→  ]
+   423→  for (const e of sampleEvidence) {
+   424→    await db.evidence.create({
+   425→      data: { ...e, tenantId: tenant.id, uploadedById: complianceOfficer.id },
+   426→    })
+   427→  }
+   428→  console.log('  ✓ Sample evidence:', sampleEvidence.length)
+   429→
+   430→  // ---- Sample Vulnerabilities ----
+   431→  const vulns = [
+   432→    { title: 'Apache Log4j vulnerable to RCE', description: 'Log4Shell (CVE-2021-44228) detected on app servers.', severity: 'critical', status: 'open', cvss: 10.0, cve: 'CVE-2021-44228', asset: 'app-prod-01', assignedTo: 'Tom Reyes' },
+   433→    { title: 'Outdated TLS 1.0 on load balancer', description: 'TLS 1.0 still enabled on public load balancer.', severity: 'medium', status: 'in_progress', cvss: 5.3, asset: 'lb-edge-01', assignedTo: 'Tom Reyes' },
+   434→    { title: 'SQL injection in search API', description: 'Parameterized queries not used on /api/search.', severity: 'high', status: 'resolved', cvss: 8.6, asset: 'api-gateway', assignedTo: 'Tom Reyes' },
+   435→    { title: 'Default credentials on dev database', description: 'root/root still set on dev MySQL.', severity: 'high', status: 'open', cvss: 9.1, asset: 'db-dev-01', assignedTo: 'Tom Reyes' },
+   436→    { title: 'Missing security headers', description: 'X-Frame-Options and CSP missing on marketing site.', severity: 'low', status: 'closed', cvss: 3.7, asset: 'marketing-site' },
+   437→    { title: 'Open S3 bucket with PII', description: 'Bucket acme-uploads publicly readable.', severity: 'critical', status: 'resolved', cvss: 9.8, asset: 's3-acme-uploads', assignedTo: 'Tom Reyes' },
+   438→  ]
+   439→  for (const v of vulns) {
+   440→    await db.vulnerability.create({ data: { ...v, tenantId: tenant.id } })
+   441→  }
+   442→  console.log('  ✓ Sample vulnerabilities:', vulns.length)
+   443→
+   444→  // ---- Sample Risks ----
+   445→  const risks = [
+   446→    { title: 'Ransomware attack on production systems', description: 'Risk of ransomware encrypting core production databases.', category: 'cyber', likelihood: 3, impact: 5, treatment: 'mitigate', owner: 'Sarah Mitchell', status: 'treating' },
+   447→    { title: 'Insider data exfiltration', description: 'Risk of privileged user exfiltrating customer data.', category: 'cyber', likelihood: 2, impact: 5, treatment: 'mitigate', owner: 'Sarah Mitchell', status: 'monitored' },
+   448→    { title: 'GDPR non-compliance fine', description: 'Risk of regulatory fine for GDPR violation.', category: 'compliance', likelihood: 2, impact: 5, treatment: 'mitigate', owner: 'Mark Lee', status: 'treating' },
+   449→    { title: 'Third-party supplier breach', description: 'Risk of supplier breach impacting our data.', category: 'operational', likelihood: 3, impact: 4, treatment: 'transfer', owner: 'Mark Lee', status: 'monitored' },
+   450→    { title: 'Cloud service outage', description: 'Risk of multi-hour cloud outage affecting availability.', category: 'operational', likelihood: 2, impact: 4, treatment: 'accept', owner: 'Sarah Mitchell', status: 'identified' },
+   451→    { title: 'Phishing of finance team', description: 'Risk of BEC attack on finance.', category: 'cyber', likelihood: 4, impact: 4, treatment: 'mitigate', owner: 'Sarah Mitchell', status: 'treating' },
+   452→    { title: 'Key talent departure', description: 'Risk of single point of failure from key engineer leaving.', category: 'strategic', likelihood: 3, impact: 3, treatment: 'mitigate', owner: 'Sarah Mitchell', status: 'monitored' },
+   453→    { title: 'PCI audit failure', description: 'Risk of failing annual PCI assessment.', category: 'compliance', likelihood: 2, impact: 4, treatment: 'mitigate', owner: 'Mark Lee', status: 'treating' },
+   454→  ]
+   455→  for (const r of risks) {
+   456→    await db.risk.create({ data: { ...r, tenantId: tenant.id, inherentScore: r.likelihood * r.impact, residualScore: Math.max(1, Math.round((r.likelihood * r.impact) * 0.5)) } })
+   457→  }
+   458→  console.log('  ✓ Sample risks:', risks.length)
+   459→
+   460→  // ---- Sample Policies ----
+   461→  const policies = [
+   462→    { title: 'Information Security Policy', category: 'access_control', content: 'This policy establishes the framework for protecting information assets...', version: '3.2', status: 'published', owner: 'Sarah Mitchell', approvedBy: 'Sarah Mitchell' },
+   463→    { title: 'Acceptable Use Policy', category: 'access_control', content: 'Defines acceptable use of company systems and data...', version: '2.1', status: 'published', owner: 'Mark Lee', approvedBy: 'Sarah Mitchell' },
+   464→    { title: 'Data Classification Policy', category: 'data_protection', content: 'Classifies data into Public, Internal, Confidential, Restricted...', version: '1.5', status: 'published', owner: 'Mark Lee', approvedBy: 'Sarah Mitchell' },
+   465→    { title: 'Incident Response Plan', category: 'incident', content: 'Outlines procedures for detecting, responding to, and recovering from security incidents...', version: '4.0', status: 'published', owner: 'Sarah Mitchell', approvedBy: 'Sarah Mitchell' },
+   466→    { title: 'Vendor Risk Management Policy', category: 'access_control', content: 'Defines requirements for third-party vendor security assessment...', version: '1.2', status: 'draft', owner: 'Mark Lee' },
+   467→    { title: 'Remote Work Security Policy', category: 'access_control', content: 'Defines security requirements for remote workers...', version: '2.0', status: 'published', owner: 'Sarah Mitchell', approvedBy: 'Sarah Mitchell' },
+   468→  ]
+   469→  for (const p of policies) {
+   470→    await db.policy.create({ data: { ...p, tenantId: tenant.id, approvedAt: p.status === 'published' ? new Date() : null, effectiveAt: p.status === 'published' ? new Date() : null, reviewDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) } })
+   471→  }
+   472→  console.log('  ✓ Sample policies:', policies.length)
+   473→
+   474→  // ---- Sample Audits ----
+   475→  const audit = await db.audit.create({
+   476→    data: {
+   477→      tenantId: tenant.id,
+   478→      title: 'ISO 27001 Internal Audit 2024',
+   479→      type: 'internal',
+   480→      frameworkId: iso.id,
+   481→      status: 'in_progress',
+   482→      lead: 'Priya Sharma',
+   483→      scope: 'All ISO 27001 controls in Annex A',
+   484→      startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+   485→      endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+   486→      tasks: {
+   487→        create: [
+   488→          { title: 'Review ISMS policy documentation', status: 'done', assigneeId: auditor.id, order: 1 },
+   489→          { title: 'Interview CISO on risk management', status: 'in_progress', assigneeId: auditor.id, order: 2 },
+   490→          { title: 'Sample access reviews for 5 systems', status: 'todo', assigneeId: auditor.id, order: 3, dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) },
+   491→          { title: 'Verify backup restore test evidence', status: 'todo', assigneeId: auditor.id, order: 4, dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000) },
+   492→          { title: 'Walk-through of physical security at HQ', status: 'todo', assigneeId: auditor.id, order: 5, dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+   493→          { title: 'Compile audit findings report', status: 'todo', assigneeId: auditor.id, order: 6, dueDate: new Date(Date.now() + 12 * 24 * 60 * 60 * 1000) },
+   494→        ],
+   495→      },
+   496→    },
+   497→  })
+   498→  console.log('  ✓ Sample audit with 6 tasks')
+   499→
+   500→  // ---- Sample Checklist ----
+   501→  const checklist = await db.checklist.create({
+   502→    data: {
+   503→      tenantId: tenant.id,
+   504→      frameworkId: iso.id,
+   505→      title: 'ISO 27001 Readiness Self-Assessment',
+   506→      description: 'Self-assessment checklist to verify readiness for ISO 27001 certification audit.',
+   507→      status: 'in_progress',
+   508→      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+   509→      items: {
+   510→        create: [
+   511→          { question: 'Is your Information Security Policy approved by management?', hint: 'Refer to A.5.1', type: 'yes_no', order: 1 },
+   512→          { question: 'Are information security roles and responsibilities documented?', hint: 'Refer to A.5.2', type: 'yes_no', order: 2 },
+   513→          { question: 'Do you conduct background checks on new hires?', hint: 'Refer to A.6.1', type: 'yes_no', order: 3 },
+   514→          { question: 'Is security awareness training delivered annually?', hint: 'Refer to A.6.3', type: 'yes_no', order: 4 },
+   515→          { question: 'Are data centers protected with multi-factor physical access?', hint: 'Refer to A.7.1', type: 'yes_no', order: 5 },
+   516→          { question: 'Is MFA enforced for all remote access?', hint: 'Refer to A.8.5', type: 'yes_no', order: 6 },
+   517→          { question: 'Are vulnerability scans run at least weekly?', hint: 'Refer to A.8.8', type: 'yes_no', order: 7 },
+   518→          { question: 'Are backups tested for restore quarterly?', hint: 'Refer to A.8.13', type: 'yes_no', order: 8 },
+   519→          { question: 'Rate your overall ISMS maturity (1-5).', hint: '1 = ad-hoc, 5 = optimized', type: 'rating', order: 9 },
+   520→          { question: 'Describe your top 3 security improvement initiatives.', hint: 'Free text', type: 'text', order: 10 },
+   521→        ],
+   522→      },
+   523→    },
+   524→  })
+   525→  console.log('  ✓ Sample checklist with 10 items')
+   526→
+   527→  // ---- Notifications ----
+   528→  await db.notification.createMany({
+   529→    data: [
+   530→      { tenantId: tenant.id, userId: tenantAdmin.id, title: 'Audit due soon', message: 'ISO 27001 internal audit ends in 14 days.', type: 'warning' },
+   531→      { tenantId: tenant.id, userId: complianceOfficer.id, title: 'Evidence review needed', message: '3 evidence items awaiting approval.', type: 'info' },
+   532→      { tenantId: tenant.id, userId: tenantAdmin.id, title: 'Critical vulnerability open', message: 'Log4Shell remains unresolved on app-prod-01.', type: 'error' },
+   533→    ],
+   534→  })
+   535→  console.log('  ✓ Sample notifications (3)')
+   536→
+   537→  console.log('\n✅ Seed complete.')
+   538→  console.log('   Super Admin: superadmin@isecurify.com / Admin@123')
+   539→  console.log('   Tenant Admin: sarah.mitchell@acme.com / Tenant@123')
+   540→  console.log('   Compliance: mark.lee@acme.com / Tenant@123')
+   541→  console.log('   Auditor: priya.sharma@acme.com / Tenant@123')
+   542→  console.log('   Employee: tom.reyes@acme.com / Tenant@123')
+   543→}
+   544→
+   545→main()
+   546→  .catch((e) => {
+   547→    console.error(e)
+   548→    process.exit(1)
+   549→  })
+   550→  .finally(async () => {
+   551→    await db.$disconnect()
+   552→  })
+   553→
