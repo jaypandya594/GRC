@@ -479,80 +479,201 @@ function ImportControlsDialog({ frameworks, defaultFrameworkId, onDone }: { fram
   const [jsonText, setJsonText] = useState('')
   const [importing, setImporting] = useState(false)
   const [parsedCount, setParsedCount] = useState(0)
+  const [parseError, setParseError] = useState('')
   const [parsingFile, setParsingFile] = useState(false)
+  const [detectedColumns, setDetectedColumns] = useState<string[]>([])
+  const [manualRef, setManualRef] = useState('')
+  const [manualTitle, setManualTitle] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setSelectedFw(defaultFrameworkId)
     setJsonText('')
     setParsedCount(0)
+    setParseError('')
   }, [defaultFrameworkId])
 
-  // Flexible header mapping — recognizes common control-catalog column names
+  // Flexible header mapping — recognizes common control-catalog AND checklist column names
   const HEADER_ALIASES: Record<string, string[]> = {
-    ref:        ['ref', 'control id', 'criteria id', 'citation', 'control ref', 'id', 'reference', 'clause', 'article'],
-    title:      ['title', 'control name', 'name', 'requirement', 'aicpa trust services criteria (the requirement)', 'implementation objective', 'the requirement', 'control'],
-    description:['description', 'desc', 'details', 'control description', 'requirement text', 'what it requires'],
-    category:   ['category', 'theme', 'domain', 'domain (coso category)', 'safeguard / domain', 'safeguard/domain', 'theme/domain', 'group', 'section', 'family'],
-    guidance:   ['guidance', 'standard auditable control (example implementation)', 'implementation guidance', 'example implementation', 'how to implement', 'implementation'],
+    ref:        ['ref', 'control id', 'criteria id', 'citation', 'control ref', 'id', 'reference', 'clause', 'article',
+                 'controlid', 'control_id', 'topic', 'area', 'item', 'check item',
+                 'no', 's.no', 's no', 'sr no', 'sr. no', 's.no.', 'sl no', 'sl. no', 'item no', 'item no.',
+                 'control number', 'control number.', 'requirement id', 'requirement id.', 'rule id', 'rule id.',
+                 'number', 's. no.', '#', 'seq', 'section'],
+    title:      ['title', 'control name', 'name', 'requirement', 'control description',
+                 'aicpa trust services criteria (the requirement)', 'implementation objective', 'the requirement',
+                 'control', 'controlname', 'control_name', 'question', 'check', 'item description',
+                 'requirement description', 'description of control', 'control objective', 'objective',
+                 'what is required', 'requirement text', 'checklist item', 'activity', 'task'],
+    description:['description', 'desc', 'details', 'control description', 'requirement text', 'what it requires',
+                 'comments', 'comments/ remedial action', 'comments / remedial action', 'notes', 'remarks',
+                 'remedial action', 'observation', 'finding', 'explanation'],
+    category:   ['category', 'theme', 'domain', 'domain (coso category)', 'safeguard / domain',
+                 'safeguard/domain', 'theme/domain', 'group', 'family', 'classification', 'type',
+                 'data category', 'data subject', 'subject area'],
+    guidance:   ['guidance', 'standard auditable control (example implementation)', 'implementation guidance',
+                 'example implementation', 'how to implement', 'implementation', 'remediation', 'action required',
+                 'action', 'action plan', 'recommended action', 'remedial steps'],
+  }
+
+  // Collect all alias values into a flat set for fast lookup
+  const ALL_ALIASES = new Set<string>()
+  for (const aliases of Object.values(HEADER_ALIASES)) {
+    for (const a of aliases) ALL_ALIASES.add(a)
   }
 
   function normalizeHeader(h: string): string {
-    const lower = h.trim().toLowerCase()
+    const lower = h.trim().toLowerCase().replace(/[_\s]+/g, ' ').replace(/[.]+$/, '')
     for (const [canonical, aliases] of Object.entries(HEADER_ALIASES)) {
       if (aliases.includes(lower)) return canonical
     }
     return lower // keep unknown headers as-is
   }
 
+  // Check if a header name looks like it maps to ref or title
+  function headerMapsTo(h: string, target: 'ref' | 'title'): boolean {
+    const lower = h.trim().toLowerCase().replace(/[_\s]+/g, ' ').replace(/[.]+$/, '')
+    return HEADER_ALIASES[target].includes(lower)
+  }
+
+  // Check if a row of values looks like a header row (has ref-like and title-like columns)
+  function looksLikeHeaderRow(values: string[]): { isHeader: boolean; hasRef: boolean; hasTitle: boolean } {
+    let hasRef = false
+    let hasTitle = false
+    for (const v of values) {
+      const clean = v.trim().toLowerCase().replace(/[_\s]+/g, ' ').replace(/[.]+$/, '')
+      if (HEADER_ALIASES.ref.includes(clean)) hasRef = true
+      if (HEADER_ALIASES.title.includes(clean)) hasTitle = true
+    }
+    // A header row should have at least one ref-like AND one title-like column
+    // Or it's a typical CSV header with multiple recognizable aliases
+    const aliasCount = values.filter(v => {
+      const clean = v.trim().toLowerCase().replace(/[_\s]+/g, ' ').replace(/[.]+$/, '')
+      return ALL_ALIASES.has(clean)
+    }).length
+    return { isHeader: (hasRef && hasTitle) || aliasCount >= 2, hasRef, hasTitle }
+  }
+
+  // Parse a single CSV line respecting quoted fields
+  function parseCsvLine(line: string): string[] {
+    const vals: string[] = []
+    let cur = ''
+    let inQuotes = false
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]
+      if (ch === '"') { inQuotes = !inQuotes; continue }
+      if (ch === ',' && !inQuotes) { vals.push(cur); cur = ''; continue }
+      cur += ch
+    }
+    vals.push(cur)
+    return vals.map(v => v.trim().replace(/^"|"$/g, ''))
+  }
+
   // Map a raw row object (with various possible header names) to the {ref, title, ...} format
-  function mapRow(rawRow: Record<string, string>): any {
+  function mapRow(rawRow: Record<string, any>): any {
     const mapped: any = {}
     for (const [rawKey, val] of Object.entries(rawRow)) {
       const canonical = normalizeHeader(rawKey)
-      if (canonical && val) {
-        if (!mapped[canonical]) mapped[canonical] = val.trim()
+      if (canonical && val != null) {
+        const str = typeof val === 'string' ? val : JSON.stringify(val)
+        if (str && str.trim()) {
+          if (!mapped[canonical]) mapped[canonical] = str.trim()
+        }
       }
     }
     return mapped
   }
 
+  /**
+   * Smart CSV parser that handles:
+   * - Multi-section CSVs (blank lines between tables)
+   * - Finds the best header row (one with ref+title-like columns)
+   * - Skips section title rows and repeated header rows
+   * - Inherits empty ref values from the previous row (common in checklist CSVs)
+   */
   function parseCsv(text: string): any[] {
-    const lines = text.trim().split(/\r?\n/).filter(Boolean)
-    if (lines.length < 2) return []
-    const headers = lines[0].split(',').map((h) => h.trim().replace(/^"|"$/g, ''))
-    return lines.slice(1).map((line) => {
-      // CSV parse that handles quoted fields with commas
-      const vals: string[] = []
-      let cur = ''
-      let inQuotes = false
-      for (let i = 0; i < line.length; i++) {
-        const ch = line[i]
-        if (ch === '"') { inQuotes = !inQuotes; continue }
-        if (ch === ',' && !inQuotes) { vals.push(cur); cur = ''; continue }
-        cur += ch
+    const allLines = text.trim().split(/\r?\n/).filter(l => l.trim())
+    if (allLines.length < 2) return []
+
+    // Parse all lines into arrays of values
+    const parsedLines = allLines.map(line => parseCsvLine(line))
+
+    // Strategy 1: Find the first line that looks like a header with both ref and title columns
+    let headerIdx = -1
+    for (let i = 0; i < parsedLines.length; i++) {
+      const { isHeader, hasRef, hasTitle } = looksLikeHeaderRow(parsedLines[i])
+      if (isHeader && hasRef && hasTitle) {
+        headerIdx = i
+        break
       }
-      vals.push(cur)
+    }
+
+    // Strategy 2: If no perfect header found, find one with at least 2 recognizable aliases
+    if (headerIdx === -1) {
+      for (let i = 0; i < Math.min(parsedLines.length, 10); i++) {
+        const { isHeader } = looksLikeHeaderRow(parsedLines[i])
+        if (isHeader) {
+          headerIdx = i
+          break
+        }
+      }
+    }
+
+    // Strategy 3: Fall back to first line
+    if (headerIdx === -1) headerIdx = 0
+
+    const headers = parsedLines[headerIdx]
+    const results: any[] = []
+    let lastRef = ''
+
+    for (let i = headerIdx + 1; i < parsedLines.length; i++) {
+      const vals = parsedLines[i]
+
+      // Skip rows that are too short (likely section headers or empty)
+      if (vals.length < 2) continue
+
+      // Skip if this row is itself a header row (repeated in multi-section CSVs)
+      const { isHeader, hasRef, hasTitle } = looksLikeHeaderRow(vals)
+      if (isHeader && hasRef && hasTitle) continue
+
+      // Skip rows where ALL values are empty
+      if (vals.every(v => !v)) continue
+
+      // Skip non-data rows: if first value looks like a section title (no comma-separated structure, long text, not in aliases)
+      // But only if it doesn't have enough columns to be a data row
+
       const obj: Record<string, string> = {}
-      headers.forEach((h, i) => { obj[h] = (vals[i] || '').trim().replace(/^"|"$/g, '') })
-      return mapRow(obj)
-    })
+      headers.forEach((h, idx) => { obj[h] = vals[idx] || '' })
+      const mapped = mapRow(obj)
+
+      // Inherit ref from previous row if empty (common in checklist CSVs where Topic spans multiple rows)
+      if (!mapped.ref && lastRef) {
+        mapped.ref = lastRef
+      }
+      if (mapped.ref) {
+        lastRef = mapped.ref
+      }
+
+      // Only include rows that have at least a title (ref can be inherited)
+      if (mapped.title) {
+        results.push(mapped)
+      }
+    }
+
+    return results
   }
 
   // Parse an HTML table (from .docx via mammoth) into control rows
   function parseHtmlTable(html: string): any[] {
     const rows: any[] = []
-    // Use DOMParser to extract table rows
     if (typeof DOMParser === 'undefined') return rows
     const doc = new DOMParser().parseFromString(html, 'text/html')
     const tables = doc.querySelectorAll('table')
     tables.forEach((table) => {
       const trs = table.querySelectorAll('tr')
       if (trs.length < 2) return
-      // First row = headers
       const headerCells = Array.from(trs[0].querySelectorAll('td, th')).map((c) => c.textContent?.trim() || '')
       if (headerCells.length === 0) return
-      // Data rows
       for (let i = 1; i < trs.length; i++) {
         const cells = Array.from(trs[i].querySelectorAll('td, th')).map((c) => c.textContent?.trim() || '')
         if (cells.length === 0) continue
@@ -564,28 +685,108 @@ function ImportControlsDialog({ frameworks, defaultFrameworkId, onDone }: { fram
     return rows
   }
 
+  /**
+   * Robust JSON parser that handles:
+   * - Bare arrays: [...]
+   * - Wrapped objects with an array value: { "controls": [...], "data": [...] }
+   * - Trailing commas (via cleanup regex)
+   * - Single-quoted strings (via replacement)
+   * - BOM characters
+   */
+  function extractArray(text: string): any[] {
+    let cleaned = text.replace(/^\uFEFF/, '').trim()
+
+    // Try direct parse first
+    try {
+      const parsed = JSON.parse(cleaned)
+      if (Array.isArray(parsed)) return parsed
+      // If it's an object, look for the first array property
+      if (parsed && typeof parsed === 'object') {
+        for (const key of Object.keys(parsed)) {
+          if (Array.isArray(parsed[key])) return parsed[key]
+        }
+      }
+      return []
+    } catch {
+      // Fall through to recovery attempts
+    }
+
+    // Recovery: fix trailing commas before } or ]
+    cleaned = cleaned.replace(/,\s*([}\]])/g, '$1')
+
+    // Recovery: replace single quotes with double quotes (naive but covers simple cases)
+    // Only do this if the first non-whitespace char is { or [
+    if (/^\s*[{[]/.test(cleaned)) {
+      cleaned = cleaned
+        .replace(/'/g, '"')
+        .replace(/(\w+)\s*:/g, (match) => {
+          // Make sure JSON keys stay quoted
+          return match.startsWith('"') ? match : `"${match.replace(':', '":')}`
+        })
+    }
+
+    try {
+      const parsed = JSON.parse(cleaned)
+      if (Array.isArray(parsed)) return parsed
+      if (parsed && typeof parsed === 'object') {
+        for (const key of Object.keys(parsed)) {
+          if (Array.isArray(parsed[key])) return parsed[key]
+        }
+      }
+    } catch (e: any) {
+      throw new Error(`JSON parse error: ${e.message}`)
+    }
+
+    return []
+  }
+
   function parseTextToControls(text: string): any[] {
     const trimmed = text.trim()
     if (!trimmed) return []
-    if (trimmed.startsWith('[')) {
-      // JSON array — map keys too
-      const arr = JSON.parse(trimmed)
-      return Array.isArray(arr) ? arr.map((r: any) => {
-        // Normalize keys
-        const obj: Record<string, string> = {}
-        for (const [k, v] of Object.entries(r)) { obj[k] = String(v ?? '') }
+
+    // Try JSON first (starts with [ or {)
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      const arr = extractArray(trimmed)
+      return arr.map((r: any) => {
+        const obj: Record<string, any> = {}
+        for (const [k, v] of Object.entries(r)) {
+          obj[k] = typeof v === 'string' ? v : (v != null ? String(v) : '')
+        }
         return mapRow(obj)
-      }) : []
+      })
     }
+
+    // Fall back to CSV
     return parseCsv(trimmed)
   }
 
   function recomputeCount(text: string) {
+    if (!text.trim()) {
+      setParsedCount(0)
+      setParseError('')
+      return
+    }
     try {
       const arr = parseTextToControls(text)
-      setParsedCount(Array.isArray(arr) ? arr.filter((c) => c.ref && c.title).length : 0)
-    } catch {
+      if (!Array.isArray(arr) || arr.length === 0) {
+        setParsedCount(0)
+        setParseError('No rows found. Ensure the content is a JSON array or CSV with a header row.')
+        return
+      }
+      const valid = arr.filter((c) => c.ref && c.title)
+      if (valid.length === 0) {
+        // Check if rows exist but lack ref/title — give a helpful hint
+        const firstRow = arr[0]
+        const keys = Object.keys(firstRow || {}).join(', ')
+        setParsedCount(0)
+        setParseError(`Rows found but none have both "ref" and "title". Keys detected: ${keys || 'none'}`)
+        return
+      }
+      setParsedCount(valid.length)
+      setParseError('')
+    } catch (err: any) {
       setParsedCount(0)
+      setParseError(err.message || 'Parse error')
     }
   }
 
@@ -595,7 +796,6 @@ function ImportControlsDialog({ frameworks, defaultFrameworkId, onDone }: { fram
     const name = file.name.toLowerCase()
 
     if (name.endsWith('.docx')) {
-      // Parse Word document using mammoth
       setParsingFile(true)
       try {
         const arrayBuffer = await file.arrayBuffer()
@@ -607,26 +807,27 @@ function ImportControlsDialog({ frameworks, defaultFrameworkId, onDone }: { fram
           toast.error('No tables found in the .docx file. Please ensure the document contains a table with headers (e.g. Control ID, Control Name, Description).')
           setJsonText('')
           setParsedCount(0)
+          setParseError('')
         } else {
-          // Convert to JSON for display + editing
           const jsonStr = JSON.stringify(controls, null, 2)
           setJsonText(jsonStr)
-          setParsedCount(controls.filter((c) => c.ref && c.title).length)
+          const valid = controls.filter((c) => c.ref && c.title)
+          setParsedCount(valid.length)
+          setParseError(valid.length === 0 ? 'Rows found but none have both "ref" and "title". Check your column headers.' : '')
           toast.success(`Parsed ${controls.length} rows from Word document`)
         }
       } catch (err: any) {
         toast.error('Failed to parse .docx file: ' + err.message)
         setJsonText('')
         setParsedCount(0)
+        setParseError(err.message)
       } finally {
         setParsingFile(false)
       }
-      // Reset the input so the same file can be selected again
       if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
 
-    // JSON or CSV — read as text
     const reader = new FileReader()
     reader.onload = () => {
       const text = String(reader.result || '')
@@ -710,15 +911,25 @@ function ImportControlsDialog({ frameworks, defaultFrameworkId, onDone }: { fram
           value={jsonText}
           onChange={(e) => { setJsonText(e.target.value); recomputeCount(e.target.value) }}
           rows={8}
-          className="font-mono text-xs resize-y"
+          className={cn('font-mono text-xs resize-y', parseError && 'border-destructive/50')}
           style={{ maxHeight: '40vh' }}
-          placeholder={'[\n  {"ref":"A.5.1","title":"Policies for infosec","description":"...","category":"Organizational","guidance":"..."},\n  {"ref":"A.5.2","title":"Roles & responsibilities","category":"Organizational"}\n]\n\n—or CSV—\nref,title,description,category,guidance\nA.5.1,Policies for infosec,...,Organizational,...'}
+          placeholder={'[\n  {\n    "ref": "A.5.1",\n    "title": "Policies for information security",\n    "description": "...",\n    "category": "Organizational"\n  },\n  {\n    "ref": "A.5.2",\n    "title": "Roles & responsibilities",\n    "category": "Organizational"\n  }\n]\n\n—or CSV—\nref,title,description,category\nc1,Policies for infosec,...,Org'}
         />
-        <div className="flex items-center justify-between text-xs">
+        {/* Status / error indicator */}
+        <div className="flex items-start justify-between text-xs gap-2">
           <span className="text-muted-foreground">
-            {parsedCount > 0 ? <span className="text-emerald-600 font-medium">{parsedCount} valid control{parsedCount === 1 ? '' : 's'} ready</span> : 'No valid controls detected'}
+            {parsedCount > 0 ? (
+              <span className="text-emerald-600 font-medium">{parsedCount} valid control{parsedCount === 1 ? '' : 's'} ready to import</span>
+            ) : parseError ? (
+              <span className="text-destructive font-medium flex items-center gap-1">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-destructive shrink-0" />
+                {parseError}
+              </span>
+            ) : (
+              jsonText.trim() ? 'Parsing…' : 'Paste or upload controls data'
+            )}
           </span>
-          <code className="text-[10px] text-muted-foreground">→ {selectedFwName}</code>
+          <code className="text-[10px] text-muted-foreground whitespace-nowrap">→ {selectedFwName}</code>
         </div>
         <div className="p-3 rounded-lg bg-muted/40 text-[11px] text-muted-foreground">
           <p className="font-semibold mb-1">Supported column headers (auto-mapped):</p>
@@ -729,7 +940,7 @@ function ImportControlsDialog({ frameworks, defaultFrameworkId, onDone }: { fram
             <span><strong>description:</strong> Description, Details, Requirement Text</span>
             <span className="col-span-2"><strong>guidance:</strong> Standard Auditable Control, Implementation Guidance, Example Implementation</span>
           </div>
-          <p className="mt-1.5">For Word (.docx): the document must contain a <strong>table</strong> with headers in the first row.</p>
+          <p className="mt-1.5">{'Accepts: JSON array [{...}], wrapped object {"controls":[{...}]}, or CSV with headers.'}</p>
         </div>
       </div>
 

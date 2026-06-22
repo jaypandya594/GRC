@@ -103,3 +103,29 @@ Stage Summary:
 - Dialog is fully scrollable with textarea capped at 40vh
 - Footer (Import/Cancel buttons) always visible regardless of content length
 - Files changed: `src/components/app/views/ControlsView.tsx`, `src/app/api/controls/import/route.ts`
+
+---
+Task ID: 9 — Fix Import Controls Button Not Enabling
+- **Agent:** main
+- **Date:** 2025-06-22
+
+Work Log:
+- Diagnosed root causes: (1) `recomputeCount` silently swallowed ALL parse errors with no feedback, (2) parser only accepted bare `[...]` arrays not wrapped objects `{"controls":[...]}`, (3) header normalization was too strict on whitespace/underscores
+- Rewrote `ImportControlsDialog` with comprehensive fixes:
+  - Added `parseError` state — now shows visible red error messages when parsing fails
+  - Added `extractArray()` robust JSON parser that handles: bare arrays, wrapped objects (finds first array property), trailing commas, BOM characters, single-quoted strings
+  - Changed `parseTextToControls` to also accept `{...}` wrapped objects (not just `[...]`)
+  - Added underscore-based key aliases: `control_id`, `control_name` for camelCase/snake_case JSON
+  - `normalizeHeader` now collapses `[_\s]+` to single space for flexible matching
+  - `mapRow` handles non-string values (numbers, objects) by stringifying them
+  - Textarea border turns red when parse error is active
+  - Status indicator shows: green "N valid controls ready" / red "error message" / gray "Paste or upload"
+  - Passes 8/8 unit tests: standard JSON, SOC2 keys, wrapped objects, id/name, underscore variants, trailing commas, numeric values, BOM
+  - Passes 4/4 error tests: empty, bad JSON, wrong keys (shows detected keys), valid single-quote JSON
+
+Stage Summary:
+- Import button now highlights as soon as valid JSON/CSV with ref+title is detected
+- Visible error feedback tells user exactly what's wrong (parse error, missing ref/title, detected keys)
+- Supports wrapped JSON objects, trailing commas, BOM characters, underscore keys
+- All changes pass ESLint
+- File changed: `src/components/app/views/ControlsView.tsx`
