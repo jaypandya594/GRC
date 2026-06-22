@@ -51,3 +51,27 @@
   - Verified login API works (POST /api/auth/login returns 200 with session cookie)
   - Simplified dev script from `next dev -p 3000 2>&1 | tee dev.log` to `next dev -p 3000`
   - Created separate `prisma/schema.mysql.prisma` for deployment (active schema stays SQLite for local dev)
+
+## Task ID: 7-a — Fix ControlsView Import Dialog Scrollability & Add Export Functionality
+- **Agent:** general-purpose
+- **Date:** 2025-06-22
+- **Description:** Two fixes to `src/components/app/views/ControlsView.tsx`:
+  1. **Import Dialog scrollability fix:** Changed `DialogContent` to `max-w-2xl max-h-[85vh] flex flex-col`, wrapped middle content in `flex-1 overflow-y-auto -mx-6 px-6`, added `mt-4 shrink-0` to `DialogFooter` so Import/Cancel buttons stay visible.
+  2. **Export controls dropdown:** Added `Download` icon and `DropdownMenu` imports. Added `csvEscape`, `exportJSON`, and `exportCSV` functions inside `ControlsView`. Added an Export `DropdownMenu` button (disabled when no controls loaded) in the header actions area, with JSON and CSV format options.
+
+## Task ID: 7-b — Fix Logo Display Across App
+- **Agent:** general-purpose
+- **Date:** 2025-06-22
+- **Description:** Fixed logo (transparent PNG) visibility issues across the application:
+  1. **LoginPage.tsx — Hero panel (dark bg):** Wrapped transparent PNG in a `w-12 h-12 rounded-xl bg-white` container for high contrast. The white box makes the purple shield + white eagle clearly visible against the dark purple gradient.
+  2. **LoginPage.tsx — Mobile view (white bg):** Wrapped icon in a `w-12 h-12 rounded-xl bg-[#812671]` container for contrast on white background.
+  3. **AppShell.tsx — Sidebar (dark bg):** Used `bg-white/10 dark:bg-white/15` container for subtle contrast in the charcoal sidebar.
+  4. Copied uploaded logo files to `public/`: `isecurify-icon.png` (transparent PNG, 663×662) and `isecurify-logo-small.jpg` (JPG, 801×366).
+  5. Verified via VLM screenshot analysis: logo is now clearly visible as "white rounded square containing a purple shield logo with a white bird/eagle emblem."
+
+## Task ID: 7-c — Final Logo Polish
+- **Agent:** main
+- **Date:** 2025-06-22
+- **Description:** Further refined logo containers:
+  - LoginPage hero panel: Changed from bare `img w-12 h-12` to `div w-12 h-12 rounded-xl bg-white + img w-10 h-10` for maximum contrast on dark purple gradient
+  - AppShell sidebar: Changed container from `bg-[#812671]/15` to `bg-white/10 dark:bg-white/15` for clean visibility in both light and dark sidebar themes

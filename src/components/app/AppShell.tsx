@@ -79,7 +79,9 @@ export function AppShell() {
   const SidebarContent = (
     <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
       <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-sidebar-border">
-        <img src="/isecurify-icon.png" alt="iSecurify" className="w-9 h-9 shrink-0 object-contain" />
+        <div className="w-10 h-10 rounded-lg bg-white/10 dark:bg-white/15 flex items-center justify-center shrink-0">
+          <img src="/isecurify-icon.png" alt="iSecurify" className="w-8 h-8 object-contain" />
+        </div>
         <div className="min-w-0">
           <h1 className="text-base font-bold tracking-tight text-sidebar-foreground">iSecurify</h1>
           <p className="text-[10px] text-sidebar-foreground/60 uppercase tracking-wider">GRC Platform</p>

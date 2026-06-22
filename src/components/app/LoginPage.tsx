@@ -123,7 +123,9 @@ export function LoginPage() {
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#812671] via-[#6b1f5e] to-[#2B2A29] text-white p-12 flex-col justify-between relative overflow-hidden">
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 20% 30%, white 1px, transparent 1px), radial-gradient(circle at 70% 60%, white 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
         <div className="relative z-10 flex items-center gap-3">
-          <img src="/isecurify-icon.png" alt="iSecurify" className="w-11 h-11 object-contain" />
+          <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shrink-0">
+            <img src="/isecurify-icon.png" alt="iSecurify" className="w-10 h-10 object-contain" />
+          </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight">iSecurify</h1>
             <p className="text-xs text-white/70">GRC Platform</p>
@@ -162,7 +164,9 @@ export function LoginPage() {
       <div className="flex-1 flex items-center justify-center p-6 lg:p-12">
         <div className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-3 mb-8 justify-center">
-            <img src="/isecurify-icon.png" alt="iSecurify" className="w-10 h-10 object-contain" />
+            <div className="w-12 h-12 rounded-xl bg-[#812671] flex items-center justify-center shrink-0">
+              <img src="/isecurify-icon.png" alt="iSecurify" className="w-10 h-10 object-contain" />
+            </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight">iSecurify</h1>
               <p className="text-xs text-muted-foreground">GRC Platform</p>

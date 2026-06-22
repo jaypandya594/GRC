@@ -13,8 +13,9 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ListChecks, Search, FileText, FolderOpen, User, ChevronRight, Plus, Upload, Eye, Trash2 } from 'lucide-react'
+import { ListChecks, Search, FileText, FolderOpen, User, ChevronRight, Plus, Upload, Download, Eye, Trash2 } from 'lucide-react'
 import { STATUS_LABELS, STATUS_BADGE } from '@/lib/types'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -87,6 +88,57 @@ export function ControlsView() {
     notStarted: controls.filter(c => !c.assignment || c.assignment.status === 'not_started').length,
   }
 
+  function csvEscape(val: string): string {
+    if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+      return '"' + val.replace(/"/g, '""') + '"'
+    }
+    return val
+  }
+
+  function exportJSON() {
+    const data = controls.map(c => ({
+      ref: c.ref,
+      title: c.title,
+      description: c.description || '',
+      category: c.category || '',
+      guidance: c.guidance || '',
+      status: c.assignment?.status || 'not_started',
+      owner: c.assignment?.owner || '',
+      notes: c.assignment?.notes || '',
+    }))
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${frameworks.find(f => f.id === selectedFramework)?.code || 'controls'}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success(`Exported ${data.length} controls as JSON`)
+  }
+
+  function exportCSV() {
+    const headers = ['ref', 'title', 'description', 'category', 'guidance', 'status', 'owner', 'notes']
+    const rows = controls.map(c => [
+      csvEscape(c.ref),
+      csvEscape(c.title),
+      csvEscape(c.description || ''),
+      csvEscape(c.category || ''),
+      csvEscape(c.guidance || ''),
+      csvEscape(c.assignment?.status || 'not_started'),
+      csvEscape(c.assignment?.owner || ''),
+      csvEscape(c.assignment?.notes || ''),
+    ])
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${frameworks.find(f => f.id === selectedFramework)?.code || 'controls'}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success(`Exported ${controls.length} controls as CSV`)
+  }
+
   return (
     <div>
       <PageHeader
@@ -96,6 +148,21 @@ export function ControlsView() {
         actions={
           isSuperAdmin ? (
             <div className="flex gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" disabled={controls.length === 0}>
+                    <Download className="w-4 h-4 mr-2" /> Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => exportJSON()}>
+                    Export as JSON
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportCSV()}>
+                    Export as CSV
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Dialog open={importOpen} onOpenChange={setImportOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline"><Upload className="w-4 h-4 mr-2" /> Import</Button>
@@ -597,15 +664,15 @@ function ImportControlsDialog({ frameworkId, onDone }: { frameworkId: string; on
   }
 
   return (
-    <DialogContent className="max-w-2xl">
+    <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
       <DialogHeader>
         <DialogTitle>Import Controls (Bulk)</DialogTitle>
         <DialogDescription>
           Upload a <strong>Word (.docx)</strong>, <strong>CSV</strong>, or <strong>JSON</strong> file, or paste directly.
-          The system auto-detects common column names (Control ID, Criteria ID, Citation, Control Name, Theme, Domain, Description, Guidance, etc.).
+          The system auto-detects common column names.
         </DialogDescription>
       </DialogHeader>
-      <div className="space-y-3">
+      <div className="flex-1 overflow-y-auto -mx-6 px-6 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <input ref={fileInputRef} type="file" accept=".json,.csv,.docx" onChange={handleFile} className="hidden" />
           <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={parsingFile}>
@@ -638,7 +705,7 @@ function ImportControlsDialog({ frameworkId, onDone }: { frameworkId: string; on
           <p className="mt-1.5">For Word (.docx): the document must contain a <strong>table</strong> with headers in the first row.</p>
         </div>
       </div>
-      <DialogFooter>
+      <DialogFooter className="mt-4 shrink-0">
         <Button variant="outline" onClick={onDone}>Cancel</Button>
         <Button onClick={submit} disabled={importing || parsingFile || parsedCount === 0}>
           {importing ? 'Importing…' : `Import ${parsedCount > 0 ? parsedCount : ''} Controls`}
