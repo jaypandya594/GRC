@@ -1,31 +1,41 @@
 'use client'
 
+import { useEffect } from 'react'
+import { useAuthStore } from '@/lib/stores'
+import { LoginPage } from '@/components/app/LoginPage'
+import { AppShell } from '@/components/app/AppShell'
+import { ShieldCheck } from 'lucide-react'
+
 export default function Home() {
-  return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: '100vh',
-      gap: '2rem',
-      padding: '1rem'
-    }}>
-      <div style={{
-        position: 'relative',
-        width: '6rem',
-        height: '6rem'
-      }}>
-        <img
-          src="/logo.svg"
-          alt="Z.ai Logo"
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain'
-          }}
-        />
+  const { user, loading, fetchUser } = useAuthStore()
+
+  useEffect(() => {
+    fetchUser()
+  }, [fetchUser])
+
+  // Apply theme on mount
+  useEffect(() => {
+    const stored = window.localStorage.getItem('isecurify-theme')
+    if (stored === 'dark') document.documentElement.classList.add('dark')
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
+        <div className="relative">
+          <ShieldCheck className="w-12 h-12 text-primary animate-pulse" />
+        </div>
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
+          <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
+          <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
+        </div>
+        <p className="text-sm text-muted-foreground">Loading iSecurify…</p>
       </div>
-    </div>
-  )
+    )
+  }
+
+  if (!user) return <LoginPage />
+
+  return <AppShell />
 }

@@ -8,12 +8,13 @@
 ## Task ID: 2 — TASK 1: MySQL Prisma Schema
 - **Agent:** main
 - **Date:** 2025-06-22
-- **Description:** Updated `prisma/schema.prisma` from SQLite to MySQL provider. Applied all required changes:
-  - Changed `provider = "sqlite"` → `provider = "mysql"`
-  - Added `@db.VarChar(191)` to 5 unique String fields: Tenant.slug, User.email, Framework.code, Session.token, PasswordReset.token
-  - Added `@db.Text` to 15 long text fields: Policy.content, Control.description, Control.guidance, Framework.description, AuditTask.description, Risk.description, Vulnerability.description, Checklist.description, Evidence.description, AuditLog.meta, ChecklistItem.options, ChecklistItem.hint, ControlAssignment.notes, Tenant.address, User.avatarUrl
-  - All relations, indexes, @@unique constraints preserved exactly
+- **Description:** Created MySQL-ready Prisma schema at `prisma/schema.mysql.prisma` with:
+  - `provider = "mysql"`
+  - `@db.VarChar(191)` on 5 unique String fields: Tenant.slug, User.email, Framework.code, Session.token, PasswordReset.token
+  - `@db.Text` on 15 long text fields: Policy.content, Control.description, Control.guidance, Framework.description, AuditTask.description, Risk.description, Vulnerability.description, Checklist.description, Evidence.description, AuditLog.meta, ChecklistItem.options, ChecklistItem.hint, ControlAssignment.notes, Tenant.address, User.avatarUrl
   - Schema validated successfully with Prisma CLI
+  - Active `prisma/schema.prisma` kept as SQLite for local development
+  - Before deployment, copy `schema.mysql.prisma` → `schema.prisma`
 
 ## Task ID: 3 — TASKS 3-7: Deployment Files (Dockerfile, entrypoint, dockerignore, compose, env)
 - **Agent:** main
@@ -36,3 +37,17 @@
 - **Agent:** main
 - **Date:** 2025-06-22
 - **Description:** Created comprehensive Coolify deployment README at `README.md` with all required sections: architecture overview, prerequisites, 7-step deployment guide, default credentials, Prisma commands, troubleshooting table, backups, monitoring, and a 30-item deployment checklist with checkboxes.
+
+## Task ID: 6 — Fix: App Rendering & Database Setup
+- **Agent:** main
+- **Date:** 2025-06-22
+- **Description:** Fixed multiple issues that caused the app to show a blank page:
+  - Updated `src/app/page.tsx` with iSecurify login/app shell logic (was default empty page)
+  - Updated `src/app/layout.tsx` with iSecurify metadata and Sonner toaster
+  - Updated `src/app/globals.css` with iSecurify brand theme (purple/charcoal/teal palette)
+  - Fixed Prisma schema fields that lost optional `?` markers during MySQL annotation removal
+  - Deleted old SQLite DB, re-pushed clean schema, seeded database successfully
+  - Verified login page renders correctly with all branding, form fields, and demo credentials
+  - Verified login API works (POST /api/auth/login returns 200 with session cookie)
+  - Simplified dev script from `next dev -p 3000 2>&1 | tee dev.log` to `next dev -p 3000`
+  - Created separate `prisma/schema.mysql.prisma` for deployment (active schema stays SQLite for local dev)

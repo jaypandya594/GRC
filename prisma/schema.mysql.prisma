@@ -1,4 +1,5 @@
 // iSecurify GRC Platform — Prisma Schema
+// MySQL provider — for Coolify/production deployment
 // Multi-tenant Governance, Risk & Compliance data model
 // Provider: change to "mysql" for Coolify/production deployment
 // provider: "sqlite" for local development
@@ -8,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -19,14 +20,14 @@ datasource db {
 model Tenant {
   id          String   @id @default(cuid())
   name        String
-  slug        String   @unique
+  slug        String   @unique @db.VarChar(191)
   industry    String?
   plan        String   @default("enterprise") // starter | business | enterprise
   status      String   @default("active") // active | suspended | trial
   contactName String?
   contactEmail String?
   contactPhone String?
-  address     String?
+  address     String? @db.Text
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -43,7 +44,7 @@ model Tenant {
 
 model User {
   id            String    @id @default(cuid())
-  email         String    @unique
+  email         String    @unique @db.VarChar(191)
   name          String
   passwordHash  String
   role          String    @default("employee") // super_admin | tenant_admin | compliance_officer | auditor | employee
@@ -51,7 +52,7 @@ model User {
   jobTitle      String?
   department    String?
   phone         String?
-  avatarUrl     String?
+  avatarUrl     String? @db.Text
   lastLoginAt   DateTime?
   tenantId      String?
   tenant        Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -72,7 +73,7 @@ model User {
 
 model Session {
   id        String   @id @default(cuid())
-  token     String   @unique
+  token     String   @unique @db.VarChar(191)
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
@@ -85,7 +86,7 @@ model Session {
 
 model PasswordReset {
   id        String   @id @default(cuid())
-  token     String   @unique
+  token     String   @unique @db.VarChar(191)
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
@@ -101,9 +102,9 @@ model PasswordReset {
 
 model Framework {
   id          String   @id @default(cuid())
-  code        String   @unique // ISO27001 | SOC2 | GDPR | HIPAA | PCI_DSS
+  code        String   @unique @db.VarChar(191) // ISO27001 | SOC2 | GDPR | HIPAA | PCI_DSS
   name        String
-  description String?
+  description String? @db.Text
   category    String?  // security | privacy | financial | healthcare
   version     String?
   icon        String?
@@ -120,9 +121,9 @@ model Control {
   framework   Framework @relation(fields: [frameworkId], references: [id], onDelete: Cascade)
   ref         String   // e.g. A.5.1, CC1.1
   title       String
-  description String?
+  description String? @db.Text
   category    String?
-  guidance    String?
+  guidance    String? @db.Text
   order       Int      @default(0)
   assignments ControlAssignment[]
   evidence    Evidence[]
@@ -141,7 +142,7 @@ model ControlAssignment {
   control     Control  @relation(fields: [controlId], references: [id], onDelete: Cascade)
   status      String   @default("not_started") // not_started | in_progress | implemented | compliant | non_compliant
   owner       String?
-  notes       String?
+  notes       String? @db.Text
   updatedAt   DateTime @updatedAt
 
   @@unique([tenantId, controlId])
@@ -161,7 +162,7 @@ model Evidence {
   uploadedById String
   uploadedBy  User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
   title       String
-  description String?
+  description String? @db.Text
   // storage
   type        String   // file | link
   fileName    String?
@@ -192,7 +193,7 @@ model Checklist {
   frameworkId String?
   framework   Framework? @relation(fields: [frameworkId], references: [id], onDelete: SetNull)
   title       String
-  description String?
+  description String? @db.Text
   status      String    @default("draft") // draft | in_progress | completed | archived
   dueDate     DateTime?
   createdAt   DateTime  @default(now())
@@ -207,9 +208,9 @@ model ChecklistItem {
   checklistId String
   checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
   question    String
-  hint        String?
+  hint        String? @db.Text
   type        String   @default("yes_no") // yes_no | text | rating | multiple
-  options     String?  // JSON encoded
+  options     String? @db.Text  // JSON encoded
   required    Boolean  @default(true)
   order       Int      @default(0)
 
@@ -240,7 +241,7 @@ model Vulnerability {
   tenantId    String
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   title       String
-  description String?
+  description String? @db.Text
   severity    String   @default("medium") // critical | high | medium | low | info
   status      String   @default("open") // open | in_progress | resolved | closed | false_positive
   cvss        Float?
@@ -290,7 +291,7 @@ model Policy {
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   title       String
   category    String?  // access_control | data_protection | incident | hr | physical
-  content     String
+  content     String @db.Text
   version     String   @default("1.0")
   status      String   @default("draft") // draft | published | retired
   owner       String?
@@ -345,7 +346,7 @@ model AuditTask {
   auditId     String
   audit       Audit    @relation(fields: [auditId], references: [id], onDelete: Cascade)
   title       String
-  description String?
+  description String? @db.Text
   assigneeId  String?
   assignee    User?    @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
   status      String   @default("todo") // todo | in_progress | done | blocked
@@ -370,7 +371,7 @@ model AuditLog {
   entity    String?
   entityId  String?
   ip        String?
-  meta      String?  // JSON
+  meta      String? @db.Text  // JSON
   createdAt DateTime @default(now())
 
   @@index([tenantId])
