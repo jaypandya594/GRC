@@ -379,7 +379,14 @@ function CreateEvidenceDialog({ open, onOpenChange, onCreated, tenants, defaultT
           if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100))
         })
         xhr.addEventListener('load', () => {
-          const res = JSON.parse(xhr.responseText)
+          let res: any
+          try {
+            res = JSON.parse(xhr.responseText)
+          } catch {
+            toast.error(`Server returned an error (${xhr.status}). Please try again.`)
+            setUploading(false)
+            return
+          }
           if (xhr.status >= 200 && xhr.status < 300) {
             toast.success('Evidence uploaded successfully')
             reset()
@@ -390,7 +397,7 @@ function CreateEvidenceDialog({ open, onOpenChange, onCreated, tenants, defaultT
           }
           setUploading(false)
         })
-        xhr.addEventListener('error', () => { toast.error('Upload failed'); setUploading(false) })
+        xhr.addEventListener('error', () => { toast.error('Network error during upload'); setUploading(false) })
         xhr.open('POST', '/api/evidence/upload')
         xhr.send(formData)
       } else {

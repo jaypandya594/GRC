@@ -129,3 +129,20 @@ Stage Summary:
 - Supports wrapped JSON objects, trailing commas, BOM characters, underscore keys
 - All changes pass ESLint
 - File changed: `src/components/app/views/ControlsView.tsx`
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix evidence upload 404 error and JSON.parse crash
+
+Work Log:
+- Investigated error: frontend POSTs to `/api/evidence/upload` but only `/api/evidence` route existed (JSON-only, no multipart support)
+- Created `/src/app/api/evidence/upload/route.ts` — full multipart FormData handler with: auth check, tenant access, 25MB limit, file type whitelist, sanitized filenames, per-tenant directory under `public/uploads/`, DB record creation, audit logging
+- Fixed `JSON.parse(xhr.responseText)` crash in `EvidenceView.tsx` — wrapped in try-catch to gracefully handle non-JSON responses (e.g. 404 HTML pages) with user-friendly toast error
+- Created `public/uploads/` directory
+- Verified lint passes clean
+
+Stage Summary:
+- Root cause 1: `/api/evidence/upload` route did not exist → created with full file upload logic
+- Root cause 2: XHR `JSON.parse` on non-JSON 404 response → added try-catch with fallback error message
+- Files created: `src/app/api/evidence/upload/route.ts`
+- Files modified: `src/components/app/views/EvidenceView.tsx` (lines 381-400)
