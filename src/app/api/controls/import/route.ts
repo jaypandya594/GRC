@@ -49,8 +49,19 @@ export async function POST(req: NextRequest) {
       order: typeof c.order === 'number' ? c.order : i,
     }))
 
+  const skipped = controls.length - toCreate.length
+
   if (toCreate.length === 0) {
-    return NextResponse.json({ created: 0, skipped: controls.length })
+    await db.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'control.import',
+        entity: 'framework',
+        entityId: frameworkId,
+        meta: JSON.stringify({ count: 0, skipped, framework: fw.code }),
+      },
+    })
+    return NextResponse.json({ created: 0, skipped })
   }
 
   const created = await db.control.createMany({ data: toCreate })
@@ -61,9 +72,9 @@ export async function POST(req: NextRequest) {
       action: 'control.import',
       entity: 'framework',
       entityId: frameworkId,
-      meta: JSON.stringify({ count: created.count, framework: fw.code }),
+      meta: JSON.stringify({ count: created.count, skipped, framework: fw.code }),
     },
   })
 
-  return NextResponse.json({ created: created.count })
+  return NextResponse.json({ created: created.count, skipped })
 }

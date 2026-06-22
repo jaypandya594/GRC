@@ -75,3 +75,31 @@
 - **Description:** Further refined logo containers:
   - LoginPage hero panel: Changed from bare `img w-12 h-12` to `div w-12 h-12 rounded-xl bg-white + img w-10 h-10` for maximum contrast on dark purple gradient
   - AppShell sidebar: Changed container from `bg-[#812671]/15` to `bg-white/10 dark:bg-white/15` for clean visibility in both light and dark sidebar themes
+
+---
+Task ID: 8 — Generic Controls Import with Framework Selector & Duplicate Prevention
+- **Agent:** main
+- **Date:** 2025-06-22
+
+Work Log:
+- Analyzed user request: import controls should work for ANY framework, not just the currently-tabbed one
+- Updated `ImportControlsDialog` props from `{ frameworkId, onDone }` to `{ frameworks, defaultFrameworkId, onDone }`
+- Added a framework selector dropdown (`Select` component) inside the import dialog so users can pick any registered framework
+- Framework list shows `code — name` for clarity (e.g., "SOC2 — SOC 2 Type II", "ISO27001 — ISO 27001")
+- Updated `ControlsView` to pass `frameworks` array and `defaultFrameworkId` to `ImportControlsDialog`
+- Improved dialog scrollability: `max-h-[90vh]`, `overflow-hidden` on DialogContent, `flex-1 overflow-y-auto min-h-0` on body, `shrink-0` on header/footer, textarea capped at `maxHeight: 40vh`
+- Footer has `pt-3 border-t` for clear visual separation and always stays visible
+- Updated `/api/controls/import` to always return `{ created, skipped }` counts (previously only returned skipped when ALL were duplicates)
+- Import dialog toast now shows both counts: e.g., "15 imported, 3 duplicates skipped"
+- Duplicate prevention: API filters out controls whose `ref` already exists in the target framework before `createMany`
+- Cleaned up stale `public/public/` duplicate directory from tar extraction
+- Verified logo files are valid PNG/JPG/SVG (already fixed in prior tasks)
+- All changes pass ESLint
+
+Stage Summary:
+- Import dialog now supports any framework via a built-in dropdown selector
+- Duplicate controls are automatically detected by `ref` within a framework and skipped
+- Import result shows both created count and skipped duplicate count
+- Dialog is fully scrollable with textarea capped at 40vh
+- Footer (Import/Cancel buttons) always visible regardless of content length
+- Files changed: `src/components/app/views/ControlsView.tsx`, `src/app/api/controls/import/route.ts`

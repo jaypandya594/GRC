@@ -167,7 +167,7 @@ export function ControlsView() {
                 <DialogTrigger asChild>
                   <Button variant="outline"><Upload className="w-4 h-4 mr-2" /> Import</Button>
                 </DialogTrigger>
-                <ImportControlsDialog frameworkId={selectedFramework} onDone={() => { loadControls(); setImportOpen(false) }} />
+                <ImportControlsDialog frameworks={frameworks} defaultFrameworkId={selectedFramework} onDone={() => { loadControls(); setImportOpen(false) }} />
               </Dialog>
               <Dialog open={addOpen} onOpenChange={setAddOpen}>
                 <DialogTrigger asChild>
@@ -474,7 +474,8 @@ function AddControlDialog({ frameworks, defaultFrameworkId, onCreated }: { frame
 }
 
 // ---------- Import Controls Dialog ----------
-function ImportControlsDialog({ frameworkId, onDone }: { frameworkId: string; onDone: () => void }) {
+function ImportControlsDialog({ frameworks, defaultFrameworkId, onDone }: { frameworks: any[]; defaultFrameworkId: string; onDone: () => void }) {
+  const [selectedFw, setSelectedFw] = useState(defaultFrameworkId)
   const [jsonText, setJsonText] = useState('')
   const [importing, setImporting] = useState(false)
   const [parsedCount, setParsedCount] = useState(0)
@@ -482,10 +483,10 @@ function ImportControlsDialog({ frameworkId, onDone }: { frameworkId: string; on
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    // Reset when opened for a new framework
+    setSelectedFw(defaultFrameworkId)
     setJsonText('')
     setParsedCount(0)
-  }, [frameworkId])
+  }, [defaultFrameworkId])
 
   // Flexible header mapping — recognizes common control-catalog column names
   const HEADER_ALIASES: Record<string, string[]> = {
@@ -639,7 +640,7 @@ function ImportControlsDialog({ frameworkId, onDone }: { frameworkId: string; on
   async function submit() {
     const trimmed = jsonText.trim()
     if (!trimmed) { toast.error('Paste JSON/CSV or upload a file first'); return }
-    if (!frameworkId) { toast.error('Select a framework first'); return }
+    if (!selectedFw) { toast.error('Select a framework first'); return }
     let controls: any[]
     try {
       controls = parseTextToControls(trimmed)
@@ -655,24 +656,49 @@ function ImportControlsDialog({ frameworkId, onDone }: { frameworkId: string; on
     try {
       const res: any = await api('/api/controls/import', {
         method: 'POST',
-        body: JSON.stringify({ frameworkId, controls: valid }),
+        body: JSON.stringify({ frameworkId: selectedFw, controls: valid }),
       })
-      toast.success(`Imported ${res.created} control${res.created === 1 ? '' : 's'}`)
+      const parts: string[] = []
+      if (res.created > 0) parts.push(`${res.created} imported`)
+      if (res.skipped > 0) parts.push(`${res.skipped} duplicate${res.skipped === 1 ? '' : 's'} skipped`)
+      if (parts.length > 0) toast.success(parts.join(', '))
+      else toast.info('No changes made')
       onDone()
     } catch (e: any) { toast.error(e.message) }
     finally { setImporting(false) }
   }
 
+  const selectedFwName = frameworks.find(f => f.id === selectedFw)?.code || '…'
+
   return (
-    <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-      <DialogHeader>
+    <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+      <DialogHeader className="shrink-0">
         <DialogTitle>Import Controls (Bulk)</DialogTitle>
         <DialogDescription>
           Upload a <strong>Word (.docx)</strong>, <strong>CSV</strong>, or <strong>JSON</strong> file, or paste directly.
-          The system auto-detects common column names.
+          Auto-detects common column names. Duplicates are automatically skipped.
         </DialogDescription>
       </DialogHeader>
-      <div className="flex-1 overflow-y-auto -mx-6 px-6 space-y-3">
+
+      {/* Framework selector — always visible */}
+      <div className="shrink-0 space-y-1.5">
+        <Label className="text-xs font-medium">Target Framework *</Label>
+        <Select value={selectedFw} onValueChange={setSelectedFw}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select framework…" />
+          </SelectTrigger>
+          <SelectContent>
+            {frameworks.map((f) => (
+              <SelectItem key={f.id} value={f.id}>
+                {f.code} — {f.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Scrollable body */}
+      <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1 mt-1">
         <div className="flex flex-wrap items-center gap-2">
           <input ref={fileInputRef} type="file" accept=".json,.csv,.docx" onChange={handleFile} className="hidden" />
           <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={parsingFile}>
@@ -683,15 +709,16 @@ function ImportControlsDialog({ frameworkId, onDone }: { frameworkId: string; on
         <Textarea
           value={jsonText}
           onChange={(e) => { setJsonText(e.target.value); recomputeCount(e.target.value) }}
-          rows={10}
-          className="font-mono text-xs"
+          rows={8}
+          className="font-mono text-xs resize-y"
+          style={{ maxHeight: '40vh' }}
           placeholder={'[\n  {"ref":"A.5.1","title":"Policies for infosec","description":"...","category":"Organizational","guidance":"..."},\n  {"ref":"A.5.2","title":"Roles & responsibilities","category":"Organizational"}\n]\n\n—or CSV—\nref,title,description,category,guidance\nA.5.1,Policies for infosec,...,Organizational,...'}
         />
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground">
             {parsedCount > 0 ? <span className="text-emerald-600 font-medium">{parsedCount} valid control{parsedCount === 1 ? '' : 's'} ready</span> : 'No valid controls detected'}
           </span>
-          <code className="text-[10px] text-muted-foreground">Framework: {frameworkId ? 'selected' : 'none'}</code>
+          <code className="text-[10px] text-muted-foreground">→ {selectedFwName}</code>
         </div>
         <div className="p-3 rounded-lg bg-muted/40 text-[11px] text-muted-foreground">
           <p className="font-semibold mb-1">Supported column headers (auto-mapped):</p>
@@ -705,9 +732,10 @@ function ImportControlsDialog({ frameworkId, onDone }: { frameworkId: string; on
           <p className="mt-1.5">For Word (.docx): the document must contain a <strong>table</strong> with headers in the first row.</p>
         </div>
       </div>
-      <DialogFooter className="mt-4 shrink-0">
+
+      <DialogFooter className="shrink-0 pt-3 border-t">
         <Button variant="outline" onClick={onDone}>Cancel</Button>
-        <Button onClick={submit} disabled={importing || parsingFile || parsedCount === 0}>
+        <Button onClick={submit} disabled={importing || parsingFile || parsedCount === 0 || !selectedFw}>
           {importing ? 'Importing…' : `Import ${parsedCount > 0 ? parsedCount : ''} Controls`}
         </Button>
       </DialogFooter>

@@ -1,0 +1,717 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useEffect, useState, useRef } from 'react'
+     4→     4→import { api } from '@/lib/api'
+     5→     5→import { useAuthStore } from '@/lib/stores'
+     6→     6→import { PageHeader, EmptyState } from './shared'
+     7→     7→import { Card, CardContent } from '@/components/ui/card'
+     8→     8→import { Button } from '@/components/ui/button'
+     9→     9→import { Badge } from '@/components/ui/badge'
+    10→    10→import { Input } from '@/components/ui/input'
+    11→    11→import { Textarea } from '@/components/ui/textarea'
+    12→    12→import { Label } from '@/components/ui/label'
+    13→    13→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    14→    14→import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+    15→    15→import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+    16→    16→import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+    17→    17→import { ScrollArea } from '@/components/ui/scroll-area'
+    18→    18→import { ListChecks, Search, FileText, FolderOpen, User, ChevronRight, Plus, Upload, Download, Eye, Trash2 } from 'lucide-react'
+    19→    19→import { STATUS_LABELS, STATUS_BADGE } from '@/lib/types'
+    20→    20→import { toast } from 'sonner'
+    21→    21→import { cn } from '@/lib/utils'
+    22→    22→
+    23→    23→type Control = {
+    24→    24→  id: string
+    25→    25→  ref: string
+    26→    26→  title: string
+    27→    27→  description: string | null
+    28→    28→  category: string | null
+    29→    29→  guidance: string | null
+    30→    30→  assignment: { id: string; status: string; owner: string | null; notes: string | null } | null
+    31→    31→  evidenceCount: number
+    32→    32→}
+    33→    33→
+    34→    34→export function ControlsView() {
+    35→    35→  const { user } = useAuthStore()
+    36→    36→  const isSuperAdmin = user?.role === 'super_admin'
+    37→    37→  const [frameworks, setFrameworks] = useState<any[]>([])
+    38→    38→  const [selectedFramework, setSelectedFramework] = useState('')
+    39→    39→  const [controls, setControls] = useState<Control[]>([])
+    40→    40→  const [loading, setLoading] = useState(true)
+    41→    41→  const [search, setSearch] = useState('')
+    42→    42→  const [categoryFilter, setCategoryFilter] = useState('all')
+    43→    43→  const [statusFilter, setStatusFilter] = useState('all')
+    44→    44→  const [expanded, setExpanded] = useState<string | null>(null)
+    45→    45→  const [addOpen, setAddOpen] = useState(false)
+    46→    46→  const [importOpen, setImportOpen] = useState(false)
+    47→    47→  const [detailControl, setDetailControl] = useState<Control | null>(null)
+    48→    48→
+    49→    49→  useEffect(() => {
+    50→    50→    api('/api/frameworks').then((d: any) => {
+    51→    51→      if (!d?.frameworks) return
+    52→    52→      setFrameworks(d.frameworks)
+    53→    53→      const saved = sessionStorage.getItem('selectedFrameworkId')
+    54→    54→      const fw = d.frameworks.find((f: any) => f.id === saved) || d.frameworks[0]
+    55→    55→      if (fw) setSelectedFramework(fw.id)
+    56→    56→    }).catch(() => {})
+    57→    57→  }, [])
+    58→    58→
+    59→    59→  async function loadControls() {
+    60→    60→    if (!selectedFramework) return
+    61→    61→    setLoading(true)
+    62→    62→    try {
+    63→    63→      const d: any = await api(`/api/controls?frameworkId=${selectedFramework}`)
+    64→    64→      setControls(d?.controls || [])
+    65→    65→    } catch (e: any) { toast.error(e.message) }
+    66→    66→    finally { setLoading(false) }
+    67→    67→  }
+    68→    68→
+    69→    69→  useEffect(() => {
+    70→    70→    if (selectedFramework) loadControls()
+    71→    71→  }, [selectedFramework])
+    72→    72→
+    73→    73→  const categories = Array.from(new Set(controls.map(c => c.category).filter(Boolean)))
+    74→    74→  const filtered = controls.filter((c) => {
+    75→    75→    if (categoryFilter !== 'all' && c.category !== categoryFilter) return false
+    76→    76→    if (statusFilter !== 'all' && c.assignment?.status !== statusFilter) return false
+    77→    77→    if (search) {
+    78→    78→      const q = search.toLowerCase()
+    79→    79→      if (!c.title.toLowerCase().includes(q) && !c.ref.toLowerCase().includes(q) && !c.description?.toLowerCase().includes(q)) return false
+    80→    80→    }
+    81→    81→    return true
+    82→    82→  })
+    83→    83→
+    84→    84→  const stats = {
+    85→    85→    total: controls.length,
+    86→    86→    compliant: controls.filter(c => ['compliant', 'implemented'].includes(c.assignment?.status || '')).length,
+    87→    87→    inProgress: controls.filter(c => c.assignment?.status === 'in_progress').length,
+    88→    88→    notStarted: controls.filter(c => !c.assignment || c.assignment.status === 'not_started').length,
+    89→    89→  }
+    90→    90→
+    91→    91→  function csvEscape(val: string): string {
+    92→    92→    if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+    93→    93→      return '"' + val.replace(/"/g, '""') + '"'
+    94→    94→    }
+    95→    95→    return val
+    96→    96→  }
+    97→    97→
+    98→    98→  function exportJSON() {
+    99→    99→    const data = controls.map(c => ({
+   100→   100→      ref: c.ref,
+   101→   101→      title: c.title,
+   102→   102→      description: c.description || '',
+   103→   103→      category: c.category || '',
+   104→   104→      guidance: c.guidance || '',
+   105→   105→      status: c.assignment?.status || 'not_started',
+   106→   106→      owner: c.assignment?.owner || '',
+   107→   107→      notes: c.assignment?.notes || '',
+   108→   108→    }))
+   109→   109→    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+   110→   110→    const url = URL.createObjectURL(blob)
+   111→   111→    const a = document.createElement('a')
+   112→   112→    a.href = url
+   113→   113→    a.download = `${frameworks.find(f => f.id === selectedFramework)?.code || 'controls'}.json`
+   114→   114→    a.click()
+   115→   115→    URL.revokeObjectURL(url)
+   116→   116→    toast.success(`Exported ${data.length} controls as JSON`)
+   117→   117→  }
+   118→   118→
+   119→   119→  function exportCSV() {
+   120→   120→    const headers = ['ref', 'title', 'description', 'category', 'guidance', 'status', 'owner', 'notes']
+   121→   121→    const rows = controls.map(c => [
+   122→   122→      csvEscape(c.ref),
+   123→   123→      csvEscape(c.title),
+   124→   124→      csvEscape(c.description || ''),
+   125→   125→      csvEscape(c.category || ''),
+   126→   126→      csvEscape(c.guidance || ''),
+   127→   127→      csvEscape(c.assignment?.status || 'not_started'),
+   128→   128→      csvEscape(c.assignment?.owner || ''),
+   129→   129→      csvEscape(c.assignment?.notes || ''),
+   130→   130→    ])
+   131→   131→    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+   132→   132→    const blob = new Blob([csv], { type: 'text/csv' })
+   133→   133→    const url = URL.createObjectURL(blob)
+   134→   134→    const a = document.createElement('a')
+   135→   135→    a.href = url
+   136→   136→    a.download = `${frameworks.find(f => f.id === selectedFramework)?.code || 'controls'}.csv`
+   137→   137→    a.click()
+   138→   138→    URL.revokeObjectURL(url)
+   139→   139→    toast.success(`Exported ${controls.length} controls as CSV`)
+   140→   140→  }
+   141→   141→
+   142→   142→  return (
+   143→   143→    <div>
+   144→   144→      <PageHeader
+   145→   145→        title="Control Catalog"
+   146→   146→        description="Browse and implement controls across frameworks"
+   147→   147→        icon={ListChecks}
+   148→   148→        actions={
+   149→   149→          isSuperAdmin ? (
+   150→   150→            <div className="flex gap-2">
+   151→   151→              <DropdownMenu>
+   152→   152→                <DropdownMenuTrigger asChild>
+   153→   153→                  <Button variant="outline" disabled={controls.length === 0}>
+   154→   154→                    <Download className="w-4 h-4 mr-2" /> Export
+   155→   155→                  </Button>
+   156→   156→                </DropdownMenuTrigger>
+   157→   157→                <DropdownMenuContent align="end">
+   158→   158→                  <DropdownMenuItem onClick={() => exportJSON()}>
+   159→   159→                    Export as JSON
+   160→   160→                  </DropdownMenuItem>
+   161→   161→                  <DropdownMenuItem onClick={() => exportCSV()}>
+   162→   162→                    Export as CSV
+   163→   163→                  </DropdownMenuItem>
+   164→   164→                </DropdownMenuContent>
+   165→   165→              </DropdownMenu>
+   166→   166→              <Dialog open={importOpen} onOpenChange={setImportOpen}>
+   167→   167→                <DialogTrigger asChild>
+   168→   168→                  <Button variant="outline"><Upload className="w-4 h-4 mr-2" /> Import</Button>
+   169→   169→                </DialogTrigger>
+   170→   170→                <ImportControlsDialog frameworkId={selectedFramework} onDone={() => { loadControls(); setImportOpen(false) }} />
+   171→   171→              </Dialog>
+   172→   172→              <Dialog open={addOpen} onOpenChange={setAddOpen}>
+   173→   173→                <DialogTrigger asChild>
+   174→   174→                  <Button><Plus className="w-4 h-4 mr-2" /> Add Control</Button>
+   175→   175→                </DialogTrigger>
+   176→   176→                <AddControlDialog frameworks={frameworks} defaultFrameworkId={selectedFramework} onCreated={() => { loadControls(); setAddOpen(false) }} />
+   177→   177→              </Dialog>
+   178→   178→            </div>
+   179→   179→          ) : undefined
+   180→   180→        }
+   181→   181→      />
+   182→   182→
+   183→   183→      {/* Framework tabs */}
+   184→   184→      <div className="flex flex-wrap gap-2 mb-4">
+   185→   185→        {frameworks.map((fw) => (
+   186→   186→          <button
+   187→   187→            key={fw.id}
+   188→   188→            onClick={() => setSelectedFramework(fw.id)}
+   189→   189→            className={cn(
+   190→   190→              'px-3 py-1.5 rounded-lg text-sm font-medium border transition',
+   191→   191→              selectedFramework === fw.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-muted border-border'
+   192→   192→            )}
+   193→   193→          >
+   194→   194→            {fw.code}
+   195→   195→          </button>
+   196→   196→        ))}
+   197→   197→      </div>
+   198→   198→
+   199→   199→      {/* Stats */}
+   200→   200→      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+   201→   201→        <Card><CardContent className="p-3"><div className="text-xs text-muted-foreground">Total</div><div className="text-xl font-bold">{stats.total}</div></CardContent></Card>
+   202→   202→        <Card><CardContent className="p-3"><div className="text-xs text-muted-foreground">Compliant</div><div className="text-xl font-bold text-emerald-600">{stats.compliant}</div></CardContent></Card>
+   203→   203→        <Card><CardContent className="p-3"><div className="text-xs text-muted-foreground">In Progress</div><div className="text-xl font-bold text-amber-600">{stats.inProgress}</div></CardContent></Card>
+   204→   204→        <Card><CardContent className="p-3"><div className="text-xs text-muted-foreground">Not Started</div><div className="text-xl font-bold text-slate-500">{stats.notStarted}</div></CardContent></Card>
+   205→   205→      </div>
+   206→   206→
+   207→   207→      {/* Filters */}
+   208→   208→      <div className="flex flex-col sm:flex-row gap-2 mb-4">
+   209→   209→        <div className="relative flex-1">
+   210→   210→          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   211→   211→          <Input placeholder="Search controls…" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+   212→   212→        </div>
+   213→   213→        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+   214→   214→          <SelectTrigger className="w-full sm:w-44"><SelectValue placeholder="Category" /></SelectTrigger>
+   215→   215→          <SelectContent>
+   216→   216→            <SelectItem value="all">All categories</SelectItem>
+   217→   217→            {categories.map((c) => <SelectItem key={c} value={c as string}>{c}</SelectItem>)}
+   218→   218→          </SelectContent>
+   219→   219→        </Select>
+   220→   220→        <Select value={statusFilter} onValueChange={setStatusFilter}>
+   221→   221→          <SelectTrigger className="w-full sm:w-44"><SelectValue placeholder="Status" /></SelectTrigger>
+   222→   222→          <SelectContent>
+   223→   223→            <SelectItem value="all">All status</SelectItem>
+   224→   224→            {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+   225→   225→          </SelectContent>
+   226→   226→        </Select>
+   227→   227→      </div>
+   228→   228→
+   229→   229→      {/* Controls list */}
+   230→   230→      {loading ? (
+   231→   231→        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Card key={i} className="animate-pulse h-16" />)}</div>
+   232→   232→      ) : filtered.length === 0 ? (
+   233→   233→        <Card><EmptyState icon={ListChecks} title="No controls found" description="Adjust your filters or add/import controls for this framework." /></Card>
+   234→   234→      ) : (
+   235→   235→        <div className="space-y-2">
+   236→   236→          {filtered.map((c) => (
+   237→   237→            <Card key={c.id} className="overflow-hidden">
+   238→   238→              <button
+   239→   239→                onClick={() => setExpanded(expanded === c.id ? null : c.id)}
+   240→   240→                className="w-full text-left p-4 hover:bg-muted/30 transition"
+   241→   241→              >
+   242→   242→                <div className="flex items-center gap-3">
+   243→   243→                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex flex-col items-center justify-center shrink-0">
+   244→   244→                    <span className="text-[10px] font-bold text-primary leading-tight">{c.ref}</span>
+   245→   245→                  </div>
+   246→   246→                  <div className="flex-1 min-w-0">
+   247→   247→                    <h3 className="font-semibold text-sm truncate">{c.title}</h3>
+   248→   248→                    {c.category && <Badge variant="secondary" className="text-[10px] mt-0.5">{c.category}</Badge>}
+   249→   249→                  </div>
+   250→   250→                  <div className="flex items-center gap-2 shrink-0">
+   251→   251→                    {c.assignment ? (
+   252→   252→                      <Badge variant="outline" className={cn('text-[10px]', STATUS_BADGE[c.assignment.status])}>{STATUS_LABELS[c.assignment.status]}</Badge>
+   253→   253→                    ) : (
+   254→   254→                      <Badge variant="outline" className="text-[10px] text-slate-500">Not Started</Badge>
+   255→   255→                    )}
+   256→   256→                    {c.evidenceCount > 0 && (
+   257→   257→                      <Badge variant="secondary" className="text-[10px]"><FolderOpen className="w-3 h-3 mr-0.5" />{c.evidenceCount}</Badge>
+   258→   258→                    )}
+   259→   259→                    <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition', expanded === c.id && 'rotate-90')} />
+   260→   260→                  </div>
+   261→   261→                </div>
+   262→   262→              </button>
+   263→   263→              {expanded === c.id && (
+   264→   264→                <div className="px-4 pb-4 pt-1 border-t bg-muted/20">
+   265→   265→                  {c.description && <p className="text-sm text-muted-foreground mt-3">{c.description}</p>}
+   266→   266→                  {c.guidance && (
+   267→   267→                    <div className="mt-3 p-3 rounded-lg bg-card border">
+   268→   268→                      <p className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1"><FileText className="w-3 h-3" /> Implementation Guidance</p>
+   269→   269→                      <p className="text-sm">{c.guidance}</p>
+   270→   270→                    </div>
+   271→   271→                  )}
+   272→   272→                  {c.assignment?.owner && (
+   273→   273→                    <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
+   274→   274→                      <User className="w-3.5 h-3.5" /> Owner: <span className="font-medium text-foreground">{c.assignment.owner}</span>
+   275→   275→                    </div>
+   276→   276→                  )}
+   277→   277→                  {c.assignment?.notes && <p className="text-xs mt-2 italic">"{c.assignment.notes}"</p>}
+   278→   278→                  <div className="flex gap-2 mt-3">
+   279→   279→                    <Button size="sm" variant="outline" onClick={() => setDetailControl(c)}><Eye className="w-3.5 h-3.5 mr-1" /> View Full Details</Button>
+   280→   280→                    {isSuperAdmin && (
+   281→   281→                      <Button size="sm" variant="ghost" className="text-destructive" onClick={async () => {
+   282→   282→                        if (!confirm(`Delete control "${c.ref} — ${c.title}"?`)) return
+   283→   283→                        try { await api(`/api/controls?id=${c.id}`, { method: 'DELETE' }); toast.success('Control deleted'); loadControls() }
+   284→   284→                        catch (e: any) { toast.error(e.message) }
+   285→   285→                      }}><Trash2 className="w-3.5 h-3.5 mr-1" /> Delete</Button>
+   286→   286→                    )}
+   287→   287→                  </div>
+   288→   288→                </div>
+   289→   289→              )}
+   290→   290→            </Card>
+   291→   291→          ))}
+   292→   292→        </div>
+   293→   293→      )}
+   294→   294→
+   295→   295→      {detailControl && (
+   296→   296→        <ControlDetailSheet
+   297→   297→          control={detailControl}
+   298→   298→          onClose={() => setDetailControl(null)}
+   299→   299→          onUpdated={() => {
+   300→   300→            setDetailControl(null)
+   301→   301→            loadControls()
+   302→   302→          }}
+   303→   303→        />
+   304→   304→      )}
+   305→   305→    </div>
+   306→   306→  )
+   307→   307→}
+   308→   308→
+   309→   309→// ---------- Full Detail Sheet ----------
+   310→   310→function ControlDetailSheet({ control, onClose, onUpdated }: { control: Control; onClose: () => void; onUpdated: () => void }) {
+   311→   311→  const [status, setStatus] = useState(control.assignment?.status || 'not_started')
+   312→   312→  const [owner, setOwner] = useState(control.assignment?.owner || '')
+   313→   313→  const [notes, setNotes] = useState(control.assignment?.notes || '')
+   314→   314→  const [saving, setSaving] = useState(false)
+   315→   315→
+   316→   316→  async function save() {
+   317→   317→    setSaving(true)
+   318→   318→    try {
+   319→   319→      await api('/api/control-assignments', {
+   320→   320→        method: 'PATCH',
+   321→   321→        body: JSON.stringify({ controlId: control.id, status, owner, notes }),
+   322→   322→      })
+   323→   323→      toast.success('Control status updated')
+   324→   324→      onUpdated()
+   325→   325→    } catch (e: any) { toast.error(e.message) }
+   326→   326→    finally { setSaving(false) }
+   327→   327→  }
+   328→   328→
+   329→   329→  return (
+   330→   330→    <Sheet open onOpenChange={onClose}>
+   331→   331→      <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+   332→   332→        <SheetHeader>
+   333→   333→          <SheetTitle className="flex items-center gap-2">
+   334→   334→            <Badge variant="secondary" className="font-mono">{control.ref}</Badge>
+   335→   335→            {control.title}
+   336→   336→          </SheetTitle>
+   337→   337→          <SheetDescription>Full control details and implementation status</SheetDescription>
+   338→   338→        </SheetHeader>
+   339→   339→
+   340→   340→        <div className="mt-6 space-y-5">
+   341→   341→          {/* Status & evidence summary */}
+   342→   342→          <div className="flex flex-wrap items-center gap-2">
+   343→   343→            {control.assignment ? (
+   344→   344→              <Badge variant="outline" className={cn('text-xs', STATUS_BADGE[control.assignment.status])}>{STATUS_LABELS[control.assignment.status]}</Badge>
+   345→   345→            ) : (
+   346→   346→              <Badge variant="outline" className="text-xs text-slate-500">Not Started</Badge>
+   347→   347→            )}
+   348→   348→            {control.category && <Badge variant="secondary" className="text-xs">{control.category}</Badge>}
+   349→   349→            <Badge variant="secondary" className="text-xs"><FolderOpen className="w-3 h-3 mr-0.5" /> {control.evidenceCount} evidence</Badge>
+   350→   350→          </div>
+   351→   351→
+   352→   352→          {/* Description */}
+   353→   353→          {control.description && (
+   354→   354→            <div>
+   355→   355→              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Description</h4>
+   356→   356→              <p className="text-sm leading-relaxed">{control.description}</p>
+   357→   357→            </div>
+   358→   358→          )}
+   359→   359→
+   360→   360→          {/* Guidance */}
+   361→   361→          {control.guidance && (
+   362→   362→            <div className="p-4 rounded-lg bg-muted/40 border">
+   363→   363→              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1"><FileText className="w-3 h-3" /> Implementation Guidance</h4>
+   364→   364→              <p className="text-sm leading-relaxed">{control.guidance}</p>
+   365→   365→            </div>
+   366→   366→          )}
+   367→   367→
+   368→   368→          {/* Update status form */}
+   369→   369→          <div className="p-4 rounded-lg border bg-card">
+   370→   370→            <h4 className="text-sm font-semibold mb-3">Update Implementation Status</h4>
+   371→   371→            <div className="space-y-3">
+   372→   372→              <div className="space-y-1.5">
+   373→   373→                <Label className="text-xs">Status</Label>
+   374→   374→                <Select value={status} onValueChange={setStatus}>
+   375→   375→                  <SelectTrigger><SelectValue /></SelectTrigger>
+   376→   376→                  <SelectContent>
+   377→   377→                    {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+   378→   378→                  </SelectContent>
+   379→   379→                </Select>
+   380→   380→              </div>
+   381→   381→              <div className="space-y-1.5">
+   382→   382→                <Label className="text-xs">Owner</Label>
+   383→   383→                <Input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="e.g., Sarah Mitchell" />
+   384→   384→              </div>
+   385→   385→              <div className="space-y-1.5">
+   386→   386→                <Label className="text-xs">Implementation Notes</Label>
+   387→   387→                <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Document how this control is implemented…" rows={4} />
+   388→   388→              </div>
+   389→   389→              <Button onClick={save} disabled={saving} className="w-full">{saving ? 'Saving…' : 'Save Status'}</Button>
+   390→   390→            </div>
+   391→   391→          </div>
+   392→   392→        </div>
+   393→   393→      </SheetContent>
+   394→   394→    </Sheet>
+   395→   395→  )
+   396→   396→}
+   397→   397→
+   398→   398→// ---------- Add Control Dialog ----------
+   399→   399→function AddControlDialog({ frameworks, defaultFrameworkId, onCreated }: { frameworks: any[]; defaultFrameworkId: string; onCreated: () => void }) {
+   400→   400→  const [frameworkId, setFrameworkId] = useState(defaultFrameworkId)
+   401→   401→  const [ref, setRef] = useState('')
+   402→   402→  const [title, setTitle] = useState('')
+   403→   403→  const [description, setDescription] = useState('')
+   404→   404→  const [category, setCategory] = useState('')
+   405→   405→  const [guidance, setGuidance] = useState('')
+   406→   406→  const [order, setOrder] = useState('')
+   407→   407→  const [saving, setSaving] = useState(false)
+   408→   408→
+   409→   409→  useEffect(() => { setFrameworkId(defaultFrameworkId) }, [defaultFrameworkId])
+   410→   410→
+   411→   411→  async function submit() {
+   412→   412→    if (!frameworkId || !ref || !title) { toast.error('Framework, Ref and Title are required'); return }
+   413→   413→    setSaving(true)
+   414→   414→    try {
+   415→   415→      await api('/api/controls', {
+   416→   416→        method: 'POST',
+   417→   417→        body: JSON.stringify({ frameworkId, ref, title, description, category, guidance, order: order ? Number(order) : 0 }),
+   418→   418→      })
+   419→   419→      toast.success(`Control ${ref} added`)
+   420→   420→      onCreated()
+   421→   421→    } catch (e: any) { toast.error(e.message) }
+   422→   422→    finally { setSaving(false) }
+   423→   423→  }
+   424→   424→
+   425→   425→  return (
+   426→   426→    <DialogContent className="max-w-lg">
+   427→   427→      <DialogHeader>
+   428→   428→        <DialogTitle>Add Control</DialogTitle>
+   429→   429→        <DialogDescription>Add a single control to a framework</DialogDescription>
+   430→   430→      </DialogHeader>
+   431→   431→      <form onSubmit={(e) => { e.preventDefault(); submit() }} className="space-y-3">
+   432→   432→        <div className="space-y-2">
+   433→   433→          <Label>Framework *</Label>
+   434→   434→          <Select value={frameworkId} onValueChange={setFrameworkId}>
+   435→   435→            <SelectTrigger><SelectValue /></SelectTrigger>
+   436→   436→            <SelectContent>
+   437→   437→              {frameworks.map((f) => <SelectItem key={f.id} value={f.id}>{f.code}</SelectItem>)}
+   438→   438→            </SelectContent>
+   439→   439→          </Select>
+   440→   440→        </div>
+   441→   441→        <div className="grid grid-cols-3 gap-3">
+   442→   442→          <div className="space-y-2">
+   443→   443→            <Label>Ref *</Label>
+   444→   444→            <Input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="A.5.1" className="font-mono" />
+   445→   445→          </div>
+   446→   446→          <div className="space-y-2 col-span-2">
+   447→   447→            <Label>Title *</Label>
+   448→   448→            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Policies for information security" />
+   449→   449→          </div>
+   450→   450→        </div>
+   451→   451→        <div className="space-y-2">
+   452→   452→          <Label>Description</Label>
+   453→   453→          <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="What this control requires…" />
+   454→   454→        </div>
+   455→   455→        <div className="space-y-2">
+   456→   456→          <Label>Category</Label>
+   457→   457→          <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g., Organizational, Technological" />
+   458→   458→        </div>
+   459→   459→        <div className="space-y-2">
+   460→   460→          <Label>Implementation Guidance</Label>
+   461→   461→          <Textarea value={guidance} onChange={(e) => setGuidance(e.target.value)} rows={3} placeholder="How to implement this control…" />
+   462→   462→        </div>
+   463→   463→        <div className="space-y-2">
+   464→   464→          <Label>Order (optional)</Label>
+   465→   465→          <Input type="number" value={order} onChange={(e) => setOrder(e.target.value)} placeholder="0" />
+   466→   466→        </div>
+   467→   467→        <DialogFooter>
+   468→   468→          <Button type="button" variant="outline" onClick={onCreated}>Cancel</Button>
+   469→   469→          <Button type="submit" disabled={saving}>{saving ? 'Adding…' : 'Add Control'}</Button>
+   470→   470→        </DialogFooter>
+   471→   471→      </form>
+   472→   472→    </DialogContent>
+   473→   473→  )
+   474→   474→}
+   475→   475→
+   476→   476→// ---------- Import Controls Dialog ----------
+   477→   477→function ImportControlsDialog({ frameworkId, onDone }: { frameworkId: string; onDone: () => void }) {
+   478→   478→  const [jsonText, setJsonText] = useState('')
+   479→   479→  const [importing, setImporting] = useState(false)
+   480→   480→  const [parsedCount, setParsedCount] = useState(0)
+   481→   481→  const [parsingFile, setParsingFile] = useState(false)
+   482→   482→  const fileInputRef = useRef<HTMLInputElement>(null)
+   483→   483→
+   484→   484→  useEffect(() => {
+   485→   485→    // Reset when opened for a new framework
+   486→   486→    setJsonText('')
+   487→   487→    setParsedCount(0)
+   488→   488→  }, [frameworkId])
+   489→   489→
+   490→   490→  // Flexible header mapping — recognizes common control-catalog column names
+   491→   491→  const HEADER_ALIASES: Record<string, string[]> = {
+   492→   492→    ref:        ['ref', 'control id', 'criteria id', 'citation', 'control ref', 'id', 'reference', 'clause', 'article'],
+   493→   493→    title:      ['title', 'control name', 'name', 'requirement', 'aicpa trust services criteria (the requirement)', 'implementation objective', 'the requirement', 'control'],
+   494→   494→    description:['description', 'desc', 'details', 'control description', 'requirement text', 'what it requires'],
+   495→   495→    category:   ['category', 'theme', 'domain', 'domain (coso category)', 'safeguard / domain', 'safeguard/domain', 'theme/domain', 'group', 'section', 'family'],
+   496→   496→    guidance:   ['guidance', 'standard auditable control (example implementation)', 'implementation guidance', 'example implementation', 'how to implement', 'implementation'],
+   497→   497→  }
+   498→   498→
+   499→   499→  function normalizeHeader(h: string): string {
+   500→   500→    const lower = h.trim().toLowerCase()
+   501→   501→    for (const [canonical, aliases] of Object.entries(HEADER_ALIASES)) {
+   502→   502→      if (aliases.includes(lower)) return canonical
+   503→   503→    }
+   504→   504→    return lower // keep unknown headers as-is
+   505→   505→  }
+   506→   506→
+   507→   507→  // Map a raw row object (with various possible header names) to the {ref, title, ...} format
+   508→   508→  function mapRow(rawRow: Record<string, string>): any {
+   509→   509→    const mapped: any = {}
+   510→   510→    for (const [rawKey, val] of Object.entries(rawRow)) {
+   511→   511→      const canonical = normalizeHeader(rawKey)
+   512→   512→      if (canonical && val) {
+   513→   513→        if (!mapped[canonical]) mapped[canonical] = val.trim()
+   514→   514→      }
+   515→   515→    }
+   516→   516→    return mapped
+   517→   517→  }
+   518→   518→
+   519→   519→  function parseCsv(text: string): any[] {
+   520→   520→    const lines = text.trim().split(/\r?\n/).filter(Boolean)
+   521→   521→    if (lines.length < 2) return []
+   522→   522→    const headers = lines[0].split(',').map((h) => h.trim().replace(/^"|"$/g, ''))
+   523→   523→    return lines.slice(1).map((line) => {
+   524→   524→      // CSV parse that handles quoted fields with commas
+   525→   525→      const vals: string[] = []
+   526→   526→      let cur = ''
+   527→   527→      let inQuotes = false
+   528→   528→      for (let i = 0; i < line.length; i++) {
+   529→   529→        const ch = line[i]
+   530→   530→        if (ch === '"') { inQuotes = !inQuotes; continue }
+   531→   531→        if (ch === ',' && !inQuotes) { vals.push(cur); cur = ''; continue }
+   532→   532→        cur += ch
+   533→   533→      }
+   534→   534→      vals.push(cur)
+   535→   535→      const obj: Record<string, string> = {}
+   536→   536→      headers.forEach((h, i) => { obj[h] = (vals[i] || '').trim().replace(/^"|"$/g, '') })
+   537→   537→      return mapRow(obj)
+   538→   538→    })
+   539→   539→  }
+   540→   540→
+   541→   541→  // Parse an HTML table (from .docx via mammoth) into control rows
+   542→   542→  function parseHtmlTable(html: string): any[] {
+   543→   543→    const rows: any[] = []
+   544→   544→    // Use DOMParser to extract table rows
+   545→   545→    if (typeof DOMParser === 'undefined') return rows
+   546→   546→    const doc = new DOMParser().parseFromString(html, 'text/html')
+   547→   547→    const tables = doc.querySelectorAll('table')
+   548→   548→    tables.forEach((table) => {
+   549→   549→      const trs = table.querySelectorAll('tr')
+   550→   550→      if (trs.length < 2) return
+   551→   551→      // First row = headers
+   552→   552→      const headerCells = Array.from(trs[0].querySelectorAll('td, th')).map((c) => c.textContent?.trim() || '')
+   553→   553→      if (headerCells.length === 0) return
+   554→   554→      // Data rows
+   555→   555→      for (let i = 1; i < trs.length; i++) {
+   556→   556→        const cells = Array.from(trs[i].querySelectorAll('td, th')).map((c) => c.textContent?.trim() || '')
+   557→   557→        if (cells.length === 0) continue
+   558→   558→        const obj: Record<string, string> = {}
+   559→   559→        headerCells.forEach((h, j) => { if (h) obj[h] = cells[j] || '' })
+   560→   560→        rows.push(mapRow(obj))
+   561→   561→      }
+   562→   562→    })
+   563→   563→    return rows
+   564→   564→  }
+   565→   565→
+   566→   566→  function parseTextToControls(text: string): any[] {
+   567→   567→    const trimmed = text.trim()
+   568→   568→    if (!trimmed) return []
+   569→   569→    if (trimmed.startsWith('[')) {
+   570→   570→      // JSON array — map keys too
+   571→   571→      const arr = JSON.parse(trimmed)
+   572→   572→      return Array.isArray(arr) ? arr.map((r: any) => {
+   573→   573→        // Normalize keys
+   574→   574→        const obj: Record<string, string> = {}
+   575→   575→        for (const [k, v] of Object.entries(r)) { obj[k] = String(v ?? '') }
+   576→   576→        return mapRow(obj)
+   577→   577→      }) : []
+   578→   578→    }
+   579→   579→    return parseCsv(trimmed)
+   580→   580→  }
+   581→   581→
+   582→   582→  function recomputeCount(text: string) {
+   583→   583→    try {
+   584→   584→      const arr = parseTextToControls(text)
+   585→   585→      setParsedCount(Array.isArray(arr) ? arr.filter((c) => c.ref && c.title).length : 0)
+   586→   586→    } catch {
+   587→   587→      setParsedCount(0)
+   588→   588→    }
+   589→   589→  }
+   590→   590→
+   591→   591→  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+   592→   592→    const file = e.target.files?.[0]
+   593→   593→    if (!file) return
+   594→   594→    const name = file.name.toLowerCase()
+   595→   595→
+   596→   596→    if (name.endsWith('.docx')) {
+   597→   597→      // Parse Word document using mammoth
+   598→   598→      setParsingFile(true)
+   599→   599→      try {
+   600→   600→        const arrayBuffer = await file.arrayBuffer()
+   601→   601→        const mammoth = await import('mammoth')
+   602→   602→        const result = await mammoth.convertToHtml({ arrayBuffer })
+   603→   603→        const html = result.value || ''
+   604→   604→        const controls = parseHtmlTable(html)
+   605→   605→        if (controls.length === 0) {
+   606→   606→          toast.error('No tables found in the .docx file. Please ensure the document contains a table with headers (e.g. Control ID, Control Name, Description).')
+   607→   607→          setJsonText('')
+   608→   608→          setParsedCount(0)
+   609→   609→        } else {
+   610→   610→          // Convert to JSON for display + editing
+   611→   611→          const jsonStr = JSON.stringify(controls, null, 2)
+   612→   612→          setJsonText(jsonStr)
+   613→   613→          setParsedCount(controls.filter((c) => c.ref && c.title).length)
+   614→   614→          toast.success(`Parsed ${controls.length} rows from Word document`)
+   615→   615→        }
+   616→   616→      } catch (err: any) {
+   617→   617→        toast.error('Failed to parse .docx file: ' + err.message)
+   618→   618→        setJsonText('')
+   619→   619→        setParsedCount(0)
+   620→   620→      } finally {
+   621→   621→        setParsingFile(false)
+   622→   622→      }
+   623→   623→      // Reset the input so the same file can be selected again
+   624→   624→      if (fileInputRef.current) fileInputRef.current.value = ''
+   625→   625→      return
+   626→   626→    }
+   627→   627→
+   628→   628→    // JSON or CSV — read as text
+   629→   629→    const reader = new FileReader()
+   630→   630→    reader.onload = () => {
+   631→   631→      const text = String(reader.result || '')
+   632→   632→      setJsonText(text)
+   633→   633→      recomputeCount(text)
+   634→   634→    }
+   635→   635→    reader.readAsText(file)
+   636→   636→    if (fileInputRef.current) fileInputRef.current.value = ''
+   637→   637→  }
+   638→   638→
+   639→   639→  async function submit() {
+   640→   640→    const trimmed = jsonText.trim()
+   641→   641→    if (!trimmed) { toast.error('Paste JSON/CSV or upload a file first'); return }
+   642→   642→    if (!frameworkId) { toast.error('Select a framework first'); return }
+   643→   643→    let controls: any[]
+   644→   644→    try {
+   645→   645→      controls = parseTextToControls(trimmed)
+   646→   646→    } catch (err: any) {
+   647→   647→      toast.error('Invalid JSON/CSV: ' + err.message)
+   648→   648→      return
+   649→   649→    }
+   650→   650→    if (!Array.isArray(controls) || controls.length === 0) { toast.error('No controls to import'); return }
+   651→   651→    const valid = controls.filter((c) => c.ref && c.title)
+   652→   652→    if (valid.length === 0) { toast.error('No valid controls — each needs a ref (e.g. "Control ID"/"Citation"/"Ref") and a title (e.g. "Control Name"/"Title")'); return }
+   653→   653→
+   654→   654→    setImporting(true)
+   655→   655→    try {
+   656→   656→      const res: any = await api('/api/controls/import', {
+   657→   657→        method: 'POST',
+   658→   658→        body: JSON.stringify({ frameworkId, controls: valid }),
+   659→   659→      })
+   660→   660→      toast.success(`Imported ${res.created} control${res.created === 1 ? '' : 's'}`)
+   661→   661→      onDone()
+   662→   662→    } catch (e: any) { toast.error(e.message) }
+   663→   663→    finally { setImporting(false) }
+   664→   664→  }
+   665→   665→
+   666→   666→  return (
+   667→   667→    <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+   668→   668→      <DialogHeader>
+   669→   669→        <DialogTitle>Import Controls (Bulk)</DialogTitle>
+   670→   670→        <DialogDescription>
+   671→   671→          Upload a <strong>Word (.docx)</strong>, <strong>CSV</strong>, or <strong>JSON</strong> file, or paste directly.
+   672→   672→          The system auto-detects common column names.
+   673→   673→        </DialogDescription>
+   674→   674→      </DialogHeader>
+   675→   675→      <div className="flex-1 overflow-y-auto -mx-6 px-6 space-y-3">
+   676→   676→        <div className="flex flex-wrap items-center gap-2">
+   677→   677→          <input ref={fileInputRef} type="file" accept=".json,.csv,.docx" onChange={handleFile} className="hidden" />
+   678→   678→          <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={parsingFile}>
+   679→   679→            <Upload className="w-4 h-4 mr-2" /> {parsingFile ? 'Parsing…' : 'Upload .docx / .csv / .json'}
+   680→   680→          </Button>
+   681→   681→          <span className="text-xs text-muted-foreground">Or paste JSON/CSV directly ↓</span>
+   682→   682→        </div>
+   683→   683→        <Textarea
+   684→   684→          value={jsonText}
+   685→   685→          onChange={(e) => { setJsonText(e.target.value); recomputeCount(e.target.value) }}
+   686→   686→          rows={10}
+   687→   687→          className="font-mono text-xs"
+   688→   688→          placeholder={'[\n  {"ref":"A.5.1","title":"Policies for infosec","description":"...","category":"Organizational","guidance":"..."},\n  {"ref":"A.5.2","title":"Roles & responsibilities","category":"Organizational"}\n]\n\n—or CSV—\nref,title,description,category,guidance\nA.5.1,Policies for infosec,...,Organizational,...'}
+   689→   689→        />
+   690→   690→        <div className="flex items-center justify-between text-xs">
+   691→   691→          <span className="text-muted-foreground">
+   692→   692→            {parsedCount > 0 ? <span className="text-emerald-600 font-medium">{parsedCount} valid control{parsedCount === 1 ? '' : 's'} ready</span> : 'No valid controls detected'}
+   693→   693→          </span>
+   694→   694→          <code className="text-[10px] text-muted-foreground">Framework: {frameworkId ? 'selected' : 'none'}</code>
+   695→   695→        </div>
+   696→   696→        <div className="p-3 rounded-lg bg-muted/40 text-[11px] text-muted-foreground">
+   697→   697→          <p className="font-semibold mb-1">Supported column headers (auto-mapped):</p>
+   698→   698→          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+   699→   699→            <span><strong>ref:</strong> Control ID, Criteria ID, Citation, Reference, Clause, Article</span>
+   700→   700→            <span><strong>title:</strong> Control Name, Name, Requirement, Implementation Objective</span>
+   701→   701→            <span><strong>category:</strong> Theme, Domain, Safeguard, Group, Family</span>
+   702→   702→            <span><strong>description:</strong> Description, Details, Requirement Text</span>
+   703→   703→            <span className="col-span-2"><strong>guidance:</strong> Standard Auditable Control, Implementation Guidance, Example Implementation</span>
+   704→   704→          </div>
+   705→   705→          <p className="mt-1.5">For Word (.docx): the document must contain a <strong>table</strong> with headers in the first row.</p>
+   706→   706→        </div>
+   707→   707→      </div>
+   708→   708→      <DialogFooter className="mt-4 shrink-0">
+   709→   709→        <Button variant="outline" onClick={onDone}>Cancel</Button>
+   710→   710→        <Button onClick={submit} disabled={importing || parsingFile || parsedCount === 0}>
+   711→   711→          {importing ? 'Importing…' : `Import ${parsedCount > 0 ? parsedCount : ''} Controls`}
+   712→   712→        </Button>
+   713→   713→      </DialogFooter>
+   714→   714→    </DialogContent>
+   715→   715→  )
+   716→   716→}
+   717→   717→
